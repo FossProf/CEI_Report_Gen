@@ -1,0 +1,52 @@
+<Window x:Class="CEI.ReportGenerator.App.Views.ProjectWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Project"
+        Height="560" Width="780"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="ProjectTitle" Grid.Row="0" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+        <TextBlock x:Name="ProjectDetails" Grid.Row="1" Foreground="#666666" TextWrapping="Wrap" Margin="0,4,0,12"/>
+
+        <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Inspection Reports" FontWeight="SemiBold" Margin="10,8,10,4"/>
+                <DataGrid x:Name="ReportsGrid" Grid.Row="1" Margin="6,0,6,6"
+                          IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+                          SelectionMode="Single" HeadersVisibility="Column"
+                          MouseDoubleClick="ReportsGrid_MouseDoubleClick">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Report #" Binding="{Binding Number}" Width="90"/>
+                        <DataGridTextColumn Header="Date" Binding="{Binding DateText}" Width="120"/>
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+                        <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="OpenReportButton" Content="Open Report" Width="110" Margin="0,0,8,0" Padding="8,5"
+                    Click="OpenReportButton_Click"/>
+            <Button x:Name="ReportFolderButton" Content="Report Folder" Width="110" Margin="0,0,8,0" Padding="8,5"
+                    Click="ReportFolderButton_Click"/>
+            <Button x:Name="EditProjectButton" Content="Edit Project" Width="105" Margin="0,0,8,0" Padding="8,5"
+                    Click="EditProjectButton_Click"/>
+            <Button Content="Project Folder" Width="110" Margin="0,0,8,0" Padding="8,5"
+                    Click="ProjectFolderButton_Click"/>
+            <Button x:Name="NewReportButton" Content="New Report" Width="110" Padding="8,5"
+                    Click="NewReportButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
