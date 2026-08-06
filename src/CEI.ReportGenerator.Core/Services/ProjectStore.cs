@@ -22,11 +22,28 @@ public static class ProjectStore
         BuildDirectoryStructure(project);
 
         project.TemplatePath = CopyTemplate(project, templateSourcePath);
-        project.InspectorSignaturePath = CopySignature(project, ProjectLayout.InspectorSignatureFileName, inspectorSignaturePath);
-        project.ProjectManagerSignaturePath = CopySignature(project, ProjectLayout.ProjectManagerSignatureFileName, projectManagerSignaturePath);
+        project.InspectorSignaturePath = StoreSignature(project, inspectorSignaturePath) ?? string.Empty;
+        project.ProjectManagerSignaturePath = StoreSignature(project, projectManagerSignaturePath) ?? string.Empty;
 
         Save(project);
         return project;
+    }
+
+    private static string StoreSignature(Project project, string signatureSourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(signatureSourcePath) || !File.Exists(signatureSourcePath))
+        {
+            throw new InvalidOperationException("A signature image file is required.");
+        }
+
+        var relative = SignatureStore.RelativePath(project.FolderPath, signatureSourcePath);
+        if (relative is not null)
+        {
+            return relative;
+        }
+
+        var imported = SignatureStore.Import(project.FolderPath, signatureSourcePath, replaceIfExists: true);
+        return imported ?? throw new InvalidOperationException("Signature image could not be stored in the project.");
     }
 
     public static void Save(Project project)
@@ -85,24 +102,6 @@ public static class ProjectStore
 
         var target = Path.Combine(project.FolderPath, ProjectLayout.TemplateFileName);
         File.Copy(templateSourcePath, target, overwrite: true);
-        return target;
-    }
-
-    private static string CopySignature(Project project, string fileName, string signatureSourcePath)
-    {
-        if (string.IsNullOrWhiteSpace(signatureSourcePath) || !File.Exists(signatureSourcePath))
-        {
-            throw new InvalidOperationException("A signature image file is required.");
-        }
-
-        var extension = Path.GetExtension(signatureSourcePath);
-        if (string.IsNullOrEmpty(extension))
-        {
-            extension = ".png";
-        }
-
-        var target = Path.Combine(ProjectLayout.SignaturesFolder(project), fileName);
-        File.Copy(signatureSourcePath, target, overwrite: true);
         return target;
     }
 }

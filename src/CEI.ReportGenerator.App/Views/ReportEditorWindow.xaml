@@ -25,7 +25,8 @@
                 <TextBox x:Name="TemperatureBox" Style="{StaticResource FieldBox}" Width="120" HorizontalAlignment="Left"/>
 
                 <TextBlock Text="Weather *" Style="{StaticResource FieldLabel}"/>
-                <TextBox x:Name="WeatherBox" Style="{StaticResource FieldBox}"/>
+                <ComboBox x:Name="WeatherCombo" Width="200" HorizontalAlignment="Left"
+                          IsEditable="False" Padding="4,3" FontSize="13"/>
 
                 <TextBlock Text="Location(s) inspected *" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="LocationBox" Style="{StaticResource FieldBox}"/>

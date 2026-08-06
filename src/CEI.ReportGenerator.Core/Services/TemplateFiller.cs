@@ -9,15 +9,36 @@ using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 
 namespace CEI.ReportGenerator.Core.Services;
 
+public enum GenerationStage
+{
+    ValidateProject,
+    ValidateReport,
+    ValidateTemplate,
+    CopyTemplate,
+    PopulateText,
+    ProcessPhotos,
+    InsertSignatures,
+    SaveDocument,
+    ValidateOutput
+}
+
 public sealed record GenerationResult(string OutputPath);
 
 public sealed class GenerationException : Exception
 {
     public GenerationException(IReadOnlyList<string> errors)
+        : this(null, errors)
+    {
+    }
+
+    public GenerationException(GenerationStage? stage, IReadOnlyList<string> errors)
         : base(string.Join(Environment.NewLine, errors))
     {
+        Stage = stage;
         Errors = errors;
     }
+
+    public GenerationStage? Stage { get; }
 
     public IReadOnlyList<string> Errors { get; }
 }
@@ -31,27 +52,123 @@ public static class TemplateFiller
     private static readonly string RelationshipNamespace =
         "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
+    private static readonly (string Tag, string Role)[] SignatureAreas =
+    [
+        (TemplateValidator.RequiredSignatureTags[0], "Special Inspector"),
+        (TemplateValidator.RequiredSignatureTags[1], "Project Manager")
+    ];
+
     public static GenerationResult Generate(Project project, InspectionReport report, string outputPath)
     {
-        if (string.IsNullOrWhiteSpace(project.TemplatePath) || !File.Exists(project.TemplatePath))
+        var stage = GenerationStage.CopyTemplate;
+        string? tempPath = null;
+        try
         {
-            throw new GenerationException(new[] { "The approved Word template could not be found." });
+            if (File.Exists(outputPath))
+            {
+                throw new GenerationException(GenerationStage.CopyTemplate,
+                    new[] { $"A report file already exists at {outputPath}." });
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            tempPath = CreateTempPath(outputPath);
+            File.Copy(project.TemplatePath, tempPath);
+
+            stage = GenerationStage.PopulateText;
+            using (var document = WordprocessingDocument.Open(tempPath, true))
+            {
+                var mainPart = document.MainDocumentPart
+                    ?? throw new GenerationException(GenerationStage.CopyTemplate, new[] { "The template is not a valid Word document." });
+                var body = mainPart.Document.Body
+                    ?? throw new GenerationException(GenerationStage.CopyTemplate, new[] { "The template has no document body." });
+
+                var values = BuildValueDictionary(project, report);
+                FillTextPlaceholders(body, values);
+
+                stage = GenerationStage.ProcessPhotos;
+                FillPhotoSlots(mainPart, body, ResolvePhotos(project, report));
+
+                stage = GenerationStage.InsertSignatures;
+                ReplaceSignatures(mainPart, project);
+
+                mainPart.Document.Save();
+            }
+
+            stage = GenerationStage.SaveDocument;
+            File.Move(tempPath, outputPath);
+            tempPath = null;
+
+            stage = GenerationStage.ValidateOutput;
+            ValidateOutput(outputPath);
+
+            return new GenerationResult(outputPath);
+        }
+        catch (GenerationException)
+        {
+            TryDelete(tempPath);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            TryDelete(tempPath);
+            throw new GenerationException(stage, new[] { $"Report generation failed during {stage}: {ex.Message}" });
+        }
+    }
+
+    private static string CreateTempPath(string outputPath)
+    {
+        var directory = Path.GetDirectoryName(outputPath)!;
+        var fileName = Path.GetFileNameWithoutExtension(outputPath);
+        return Path.Combine(directory, $".{fileName}.{Guid.NewGuid():N}.tmp.docx");
+    }
+
+    private static void TryDelete(string? path)
+    {
+        if (path is not null)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch
+            {
+                // best effort cleanup
+            }
+        }
+    }
+
+    private static void ValidateOutput(string outputPath)
+    {
+        using var document = WordprocessingDocument.Open(outputPath, false);
+        var mainPart = document.MainDocumentPart
+            ?? throw new GenerationException(GenerationStage.ValidateOutput, new[] { "The generated document has no main part." });
+        var body = mainPart.Document.Body
+            ?? throw new GenerationException(GenerationStage.ValidateOutput, new[] { "The generated document has no body." });
+
+        var leftover = body.Descendants<Text>()
+            .Select(t => t.Text)
+            .FirstOrDefault(t => t.Contains("{project.", StringComparison.Ordinal));
+        if (leftover is not null)
+        {
+            throw new GenerationException(GenerationStage.ValidateOutput,
+                new[] { "The generated document still contains unresolved template placeholders." });
+        }
+    }
+
+    private static IReadOnlyList<Photo> ResolvePhotos(Project project, InspectionReport report)
+    {
+        var photos = new List<Photo>();
+        foreach (var photo in report.Photos)
+        {
+            photos.Add(new Photo
+            {
+                Caption = photo.Caption,
+                StoredFileName = photo.StoredFileName,
+                SourcePath = ReportStore.ResolvePhotoSourcePath(project, report, photo)
+            });
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-        File.Copy(project.TemplatePath, outputPath, overwrite: true);
-
-        using var document = WordprocessingDocument.Open(outputPath, true);
-        var mainPart = document.MainDocumentPart ?? throw new GenerationException(new[] { "The template is not a valid Word document." });
-        var body = mainPart.Document.Body ?? throw new GenerationException(new[] { "The template has no document body." });
-
-        var values = BuildValueDictionary(project, report);
-        FillTextPlaceholders(body, values);
-        FillPhotoSlots(mainPart, body, report.Photos);
-        ReplaceSignatures(mainPart, project);
-
-        mainPart.Document.Save();
-        return new GenerationResult(outputPath);
+        return photos;
     }
 
     private static Dictionary<string, string> BuildValueDictionary(Project project, InspectionReport report)
@@ -230,51 +347,67 @@ public static class TemplateFiller
 
     private static void FillPhotoSlots(MainDocumentPart mainPart, Body body, IReadOnlyList<Photo> photos)
     {
-        var slots = CollectPhotoSlots(body);
-        if (slots.Count == 0)
+        var places = PhotoTable.FindPhotoPlaces(body);
+        if (places.Count == 0)
         {
-            throw new GenerationException(new[] { "The template does not contain photo placeholders." });
+            throw new GenerationException(GenerationStage.ProcessPhotos,
+                new[] { "The template does not contain a photo table." });
         }
 
-        RemoveUnusedSlots(slots, photos.Count);
-        AddClonedSlots(slots, photos.Count, body);
+        var place = places[0];
+        if (photos.Count == 0)
+        {
+            if (!place.IsRemovable)
+            {
+                throw new GenerationException(GenerationStage.ProcessPhotos,
+                    new[] { "The template photo section could not be located for removal." });
+            }
 
+            place.HeadingParagraph!.Remove();
+            place.Table.Remove();
+            place.InstructionParagraph!.Remove();
+            return;
+        }
+
+        var slots = new List<PhotoSlot>(place.Slots);
         var photoId = 1000;
-        for (var i = 0; i < photos.Count; i++)
-        {
-            var slot = slots[i];
-            InsertPhoto(mainPart, slot.ImageParagraph, photos[i], ref photoId);
-            FillCaption(slot.CaptionParagraph, i + 1, photos[i].Caption);
-        }
-    }
 
-    private static List<PhotoSlot> CollectPhotoSlots(Body body)
-    {
-        var slots = new List<PhotoSlot>();
-        var pendingImage = default(Paragraph);
-
-        foreach (var paragraph in body.Descendants<Paragraph>())
+        if (photos.Count > slots.Count)
         {
-            var text = string.Concat(paragraph.Elements<Run>().Select(TextOf));
-            if (text.Contains(".image}"))
-            {
-                pendingImage = paragraph;
-            }
-            else if (text.Contains(".caption}") && pendingImage is not null)
-            {
-                slots.Add(new PhotoSlot(pendingImage, paragraph));
-                pendingImage = null;
-            }
+            ExpandPhotoTables(place, photos.Count, slots);
         }
 
-        return slots;
-    }
+        for (var i = 0; i < slots.Count && i < photos.Count; i++)
+        {
+            InsertPhoto(mainPart, slots[i].ImageParagraph, photos[i], ref photoId);
+            FillCaption(slots[i].CaptionParagraph, i + 1, photos[i].Caption);
+        }
 
-    private static void RemoveUnusedSlots(IReadOnlyList<PhotoSlot> slots, int photoCount)
-    {
-        for (var i = slots.Count - 1; i >= photoCount; i--)
+        for (var i = photos.Count; i < slots.Count; i++)
         {
             RemoveSlotRows(slots[i]);
+        }
+    }
+
+    private static void ExpandPhotoTables(PhotoPlace place, int photoCount, List<PhotoSlot> slots)
+    {
+        var anchor = place.Table;
+        while (slots.Count < photoCount)
+        {
+            var clone = (Table)place.Table.CloneNode(true);
+            var pageBreak = new Paragraph(new Run(new Break { Type = BreakValues.Page }));
+            anchor.InsertAfterSelf(pageBreak);
+            pageBreak.InsertAfterSelf(clone);
+            anchor = clone;
+
+            var cloneSlots = PhotoTable.CollectSlots(clone);
+            if (cloneSlots.Count == 0)
+            {
+                throw new GenerationException(GenerationStage.ProcessPhotos,
+                    new[] { "The cloned photo table could not be populated." });
+            }
+
+            slots.AddRange(cloneSlots);
         }
     }
 
@@ -282,33 +415,6 @@ public static class TemplateFiller
     {
         slot.ImageParagraph.Ancestors<TableRow>().FirstOrDefault()?.Remove();
         slot.CaptionParagraph.Ancestors<TableRow>().FirstOrDefault()?.Remove();
-    }
-
-    private static void AddClonedSlots(List<PhotoSlot> slots, int photoCount, Body body)
-    {
-        if (photoCount <= slots.Count)
-        {
-            return;
-        }
-
-        var sourceRow = slots[0].ImageParagraph.Ancestors<TableRow>().First();
-        var sourceCaptionRow = slots[0].CaptionParagraph.Ancestors<TableRow>().First();
-        var anchor = slots[^1].CaptionParagraph.Ancestors<TableRow>().First();
-
-        while (slots.Count < photoCount)
-        {
-            var imageRowClone = (TableRow)sourceRow.CloneNode(true);
-            var captionRowClone = (TableRow)sourceCaptionRow.CloneNode(true);
-            anchor.InsertAfterSelf(captionRowClone);
-            anchor.InsertAfterSelf(imageRowClone);
-            anchor = captionRowClone;
-
-            var imageParagraph = imageRowClone.Descendants<Paragraph>()
-                .First(p => string.Concat(p.Elements<Run>().Select(TextOf)).Contains(".image}"));
-            var captionParagraph = captionRowClone.Descendants<Paragraph>()
-                .First(p => string.Concat(p.Elements<Run>().Select(TextOf)).Contains(".caption}"));
-            slots.Add(new PhotoSlot(imageParagraph, captionParagraph));
-        }
     }
 
     private static void FillCaption(Paragraph paragraph, int photoNumber, string caption)
@@ -443,37 +549,52 @@ public static class TemplateFiller
 
     private static void ReplaceSignatures(MainDocumentPart mainPart, Project project)
     {
-        var signatureParagraphs = mainPart.Document.Body!.Descendants<Paragraph>()
-            .Where(p => p.Descendants<A.Blip>().Any())
-            .ToList();
-
-        if (signatureParagraphs.Count == 0)
+        var body = mainPart.Document.Body!;
+        foreach (var (tag, role) in SignatureAreas)
         {
-            throw new GenerationException(new[] { "The template does not contain signature placeholders." });
-        }
+            var block = body.Descendants<SdtBlock>()
+                .FirstOrDefault(b => b.SdtProperties?.GetFirstChild<SdtAlias>()?.Val?.Value == tag);
+            if (block is null)
+            {
+                throw new GenerationException(GenerationStage.InsertSignatures,
+                    new[] { $"The template is missing the {tag} signature area." });
+            }
 
-        var signatures = new[] { project.InspectorSignaturePath, project.ProjectManagerSignaturePath };
-        for (var i = 0; i < signatures.Length && i < signatureParagraphs.Count; i++)
-        {
-            ReplaceSignatureImage(mainPart, signatureParagraphs[i], signatures[i]);
+            var signaturePath = tag == TemplateValidator.RequiredSignatureTags[0]
+                ? project.ResolvedInspectorSignaturePath
+                : project.ResolvedProjectManagerSignaturePath;
+
+            if (string.IsNullOrWhiteSpace(signaturePath) || !File.Exists(signaturePath))
+            {
+                throw new GenerationException(GenerationStage.InsertSignatures,
+                    new[] { $"The {role} signature image file is missing." });
+            }
+
+            ReplaceSignatureImage(mainPart, block, signaturePath);
         }
     }
 
-    private static void ReplaceSignatureImage(MainDocumentPart mainPart, Paragraph paragraph, string signaturePath)
+    private static void ReplaceSignatureImage(MainDocumentPart mainPart, SdtBlock block, string signaturePath)
     {
-        if (string.IsNullOrWhiteSpace(signaturePath) || !File.Exists(signaturePath))
+        var blip = block.Descendants<A.Blip>().FirstOrDefault();
+        if (blip is null)
         {
-            throw new GenerationException(new[] { "A signature image file is missing." });
+            throw new GenerationException(GenerationStage.InsertSignatures,
+                new[] { "A template signature area contains no image." });
         }
 
-        var blip = paragraph.Descendants<A.Blip>().First();
-        var oldRelationshipId = blip.Embed?.Value;
-        if (string.IsNullOrEmpty(oldRelationshipId))
+        var oldImageIds = block.Descendants()
+            .SelectMany(element => element.GetAttributes())
+            .Where(a => a.NamespaceUri == RelationshipNamespace && !string.IsNullOrEmpty(a.Value))
+            .Select(a => a.Value!)
+            .Distinct()
+            .Where(id => IsImagePart(mainPart, id))
+            .ToList();
+        if (oldImageIds.Count == 0)
         {
-            throw new GenerationException(new[] { "A template signature image is not wired to the document." });
+            throw new GenerationException(GenerationStage.InsertSignatures,
+                new[] { "A template signature image is not wired to the document." });
         }
-
-        var oldPart = (ImagePart)mainPart.GetPartById(oldRelationshipId);
 
         var newRelationshipId = NewRelationshipId(mainPart);
         var newPart = mainPart.AddImagePart(ImagePartManager.GetContentType(signaturePath), newRelationshipId);
@@ -484,36 +605,35 @@ public static class TemplateFiller
 
         blip.Embed = newRelationshipId;
 
-        var updates = new List<(OpenXmlElement Element, string LocalName, string Value)>();
-        foreach (var element in paragraph.Descendants())
+        foreach (var element in block.Descendants())
         {
             foreach (var attribute in element.GetAttributes())
             {
-                if (attribute.NamespaceUri == RelationshipNamespace && attribute.Value == oldRelationshipId)
+                if (attribute.NamespaceUri == RelationshipNamespace
+                    && attribute.Value is not null
+                    && oldImageIds.Contains(attribute.Value))
                 {
-                    updates.Add((element, attribute.LocalName, newRelationshipId));
+                    element.SetAttribute(new OpenXmlAttribute(attribute.LocalName, attribute.NamespaceUri, newRelationshipId));
                 }
             }
         }
 
-        foreach (var (element, localName, value) in updates)
+        foreach (var id in oldImageIds)
         {
-            element.SetAttribute(new OpenXmlAttribute(localName, RelationshipNamespace, value));
+            var oldPart = mainPart.GetPartById(id);
+            mainPart.DeletePart(oldPart);
         }
-
-        mainPart.DeletePart(oldPart);
     }
 
-    private sealed class PhotoSlot
+    private static bool IsImagePart(MainDocumentPart mainPart, string relationshipId)
     {
-        public PhotoSlot(Paragraph imageParagraph, Paragraph captionParagraph)
+        try
         {
-            ImageParagraph = imageParagraph;
-            CaptionParagraph = captionParagraph;
+            return mainPart.GetPartById(relationshipId) is ImagePart;
         }
-
-        public Paragraph ImageParagraph { get; }
-
-        public Paragraph CaptionParagraph { get; }
+        catch
+        {
+            return false;
+        }
     }
 }

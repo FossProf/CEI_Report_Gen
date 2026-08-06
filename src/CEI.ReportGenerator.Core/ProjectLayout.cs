@@ -14,10 +14,6 @@ public static class ProjectLayout
 
     public const string TemplateFileName = "Template.docx";
 
-    public const string InspectorSignatureFileName = "inspector_signature.png";
-
-    public const string ProjectManagerSignatureFileName = "pm_signature.png";
-
     public static string ReportsFolder(Project project)
         => Path.Combine(project.FolderPath, ReportsFolderName);
 

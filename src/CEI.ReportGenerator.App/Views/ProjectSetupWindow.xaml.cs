@@ -1,5 +1,8 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
 using Microsoft.Win32;
@@ -35,6 +38,8 @@ public partial class ProjectSetupWindow : Window
 
     public Project? CreatedProject { get; private set; }
 
+    private string ProjectFolderPath => _existing?.FolderPath ?? FolderBox.Text.Trim();
+
     private void PopulateFrom(Project project)
     {
         NameBox.Text = project.Name;
@@ -43,8 +48,8 @@ public partial class ProjectSetupWindow : Window
         ContractBox.Text = project.ContractManager;
         GeneralBox.Text = project.GeneralContractor;
         TemplateBox.Text = project.TemplatePath;
-        InspectorSigBox.Text = project.InspectorSignaturePath;
-        PMSigBox.Text = project.ProjectManagerSignaturePath;
+        RefreshSignatureCombo(InspectorSigCombo, project.InspectorSignaturePath);
+        RefreshSignatureCombo(PMSigCombo, project.ProjectManagerSignaturePath);
     }
 
     private void FolderBrowseButton_Click(object sender, RoutedEventArgs e)
@@ -56,6 +61,8 @@ public partial class ProjectSetupWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             FolderBox.Text = dialog.FolderName;
+            RefreshSignatureCombo(InspectorSigCombo, string.Empty);
+            RefreshSignatureCombo(PMSigCombo, string.Empty);
         }
     }
 
@@ -72,24 +79,104 @@ public partial class ProjectSetupWindow : Window
         }
     }
 
-    private void InspectorSigBrowseButton_Click(object sender, RoutedEventArgs e)
+    private void RefreshSignaturesButton_Click(object sender, RoutedEventArgs e)
     {
-        InspectorSigBox.Text = PickImage();
+        RefreshSignatureCombo(InspectorSigCombo, InspectorSigCombo.SelectedItem as string ?? string.Empty);
+        RefreshSignatureCombo(PMSigCombo, PMSigCombo.SelectedItem as string ?? string.Empty);
     }
 
-    private void PMSigBrowseButton_Click(object sender, RoutedEventArgs e)
+    private void OpenSignatureFolderButton_Click(object sender, RoutedEventArgs e)
     {
-        PMSigBox.Text = PickImage();
+        var folder = ProjectFolderPath;
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            ShowErrors(new[] { "Select the project folder first." });
+            return;
+        }
+
+        Directory.CreateDirectory(folder);
+        var signaturesFolder = Path.Combine(folder, ProjectLayout.SignaturesFolderName);
+        Directory.CreateDirectory(signaturesFolder);
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = signaturesFolder,
+            UseShellExecute = true
+        });
     }
 
-    private string PickImage()
+    private void InspectorSigImportButton_Click(object sender, RoutedEventArgs e)
     {
+        ImportSignature(InspectorSigCombo);
+    }
+
+    private void PMSigImportButton_Click(object sender, RoutedEventArgs e)
+    {
+        ImportSignature(PMSigCombo);
+    }
+
+    private void ImportSignature(ComboBox combo)
+    {
+        var folder = ProjectFolderPath;
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            ShowErrors(new[] { "Select the project folder first." });
+            return;
+        }
+
         var dialog = new OpenFileDialog
         {
-            Title = "Select a signature image",
-            Filter = "Images (*.png;*.jpg;*.jpeg;*.gif;*.bmp)|*.png;*.jpg;*.jpeg;*.gif;*.bmp|All files (*.*)|*.*"
+            Title = "Import a signature image into the project",
+            Filter = "Signature images (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg"
         };
-        return dialog.ShowDialog(this) == true ? dialog.FileName : string.Empty;
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(folder);
+            var relative = SignatureStore.Import(folder, dialog.FileName, replaceIfExists: false);
+            if (relative is null)
+            {
+                ShowErrors(new[] { "The selected signature image could not be imported." });
+                return;
+            }
+
+            RefreshSignatureCombo(combo, relative);
+        }
+        catch (Exception ex)
+        {
+            ShowErrors(new[] { ex.Message });
+        }
+    }
+
+    private void RefreshSignatureCombo(ComboBox combo, string storedPath)
+    {
+        var folder = ProjectFolderPath;
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            combo.ItemsSource = null;
+            combo.SelectedItem = null;
+            return;
+        }
+
+        var names = SignatureStore.ListSignatureFiles(folder)
+            .Select(Path.GetFileName)
+            .Where(n => n is not null)
+            .Select(n => n!)
+            .ToList();
+        combo.ItemsSource = names;
+
+        var current = string.IsNullOrWhiteSpace(storedPath) ? null : Path.GetFileName(storedPath);
+        if (current is not null)
+        {
+            var match = names.FirstOrDefault(n => string.Equals(n, current, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                combo.SelectedItem = match;
+            }
+        }
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -108,8 +195,10 @@ public partial class ProjectSetupWindow : Window
         }
 
         if (!File.Exists(TemplateBox.Text)) errors.Add("Select a valid Word template file.");
-        if (!File.Exists(InspectorSigBox.Text)) errors.Add("Select the Special Inspector signature image.");
-        if (!File.Exists(PMSigBox.Text)) errors.Add("Select the Project Manager signature image.");
+        var inspectorSig = InspectorSigCombo.SelectedItem as string;
+        var pmSig = PMSigCombo.SelectedItem as string;
+        if (string.IsNullOrWhiteSpace(inspectorSig)) errors.Add("Select the Special Inspector signature image.");
+        if (string.IsNullOrWhiteSpace(pmSig)) errors.Add("Select the Project Manager signature image.");
 
         if (errors.Count > 0)
         {
@@ -137,8 +226,8 @@ public partial class ProjectSetupWindow : Window
                     ContractBox.Text,
                     GeneralBox.Text,
                     TemplateBox.Text,
-                    InspectorSigBox.Text,
-                    PMSigBox.Text);
+                    SignatureStore.SignatureRelativePath(inspectorSig!),
+                    SignatureStore.SignatureRelativePath(pmSig!));
             }
             else
             {
@@ -148,8 +237,8 @@ public partial class ProjectSetupWindow : Window
                 _existing.ContractManager = ContractBox.Text.Trim();
                 _existing.GeneralContractor = GeneralBox.Text.Trim();
                 _existing.TemplatePath = TemplateBox.Text.Trim();
-                _existing.InspectorSignaturePath = InspectorSigBox.Text.Trim();
-                _existing.ProjectManagerSignaturePath = PMSigBox.Text.Trim();
+                _existing.InspectorSignaturePath = SignatureStore.SignatureRelativePath(inspectorSig!);
+                _existing.ProjectManagerSignaturePath = SignatureStore.SignatureRelativePath(pmSig!);
                 ProjectStore.Save(_existing);
                 CreatedProject = _existing;
             }

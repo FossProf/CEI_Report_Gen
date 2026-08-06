@@ -51,26 +51,36 @@
                             Padding="10,4" Click="TemplateBrowseButton_Click"/>
                 </Grid>
 
-                <TextBlock Text="Special Inspector signature image *" Style="{StaticResource FieldLabel}"/>
+                <TextBlock Text="Signature images (stored in the project's Signatures folder)" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="Open Signatures Folder" Width="150" Padding="8,4"
+                            Click="OpenSignatureFolderButton_Click"/>
+                    <Button Content="Refresh" Width="90" Margin="8,0,0,0" Padding="8,4"
+                            Click="RefreshSignaturesButton_Click"/>
+                </StackPanel>
+
+                <TextBlock Text="Special Inspector signature *" Style="{StaticResource FieldLabel}"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="InspectorSigBox" Grid.Column="0" Style="{StaticResource FieldBox}"/>
-                    <Button Grid.Column="1" Content="Browse..." Margin="6,0,0,0"
-                            Padding="10,4" Click="InspectorSigBrowseButton_Click"/>
+                    <ComboBox x:Name="InspectorSigCombo" Grid.Column="0" IsEditable="False"
+                              Padding="4,3" FontSize="13"/>
+                    <Button Grid.Column="1" Content="Import..." Margin="6,0,0,0" Padding="10,4"
+                            Click="InspectorSigImportButton_Click"/>
                 </Grid>
 
-                <TextBlock Text="Project Manager signature image *" Style="{StaticResource FieldLabel}"/>
+                <TextBlock Text="Project Manager signature *" Style="{StaticResource FieldLabel}"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="PMSigBox" Grid.Column="0" Style="{StaticResource FieldBox}"/>
-                    <Button Grid.Column="1" Content="Browse..." Margin="6,0,0,0"
-                            Padding="10,4" Click="PMSigBrowseButton_Click"/>
+                    <ComboBox x:Name="PMSigCombo" Grid.Column="0" IsEditable="False"
+                              Padding="4,3" FontSize="13"/>
+                    <Button Grid.Column="1" Content="Import..." Margin="6,0,0,0" Padding="10,4"
+                            Click="PMSigImportButton_Click"/>
                 </Grid>
 
                 <TextBlock x:Name="ErrorText" Foreground="#B00020" TextWrapping="Wrap" Margin="0,12,0,0"

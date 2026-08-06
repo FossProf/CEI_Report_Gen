@@ -23,17 +23,31 @@ public static class Validation
             errors.Add("Approved Word template is missing.");
         }
 
-        if (string.IsNullOrWhiteSpace(project.InspectorSignaturePath) || !File.Exists(project.InspectorSignaturePath))
-        {
-            errors.Add("Special Inspector signature image is missing.");
-        }
-
-        if (string.IsNullOrWhiteSpace(project.ProjectManagerSignaturePath) || !File.Exists(project.ProjectManagerSignaturePath))
-        {
-            errors.Add("Project Manager signature image is missing.");
-        }
+        AddSignatureError(errors, "Inspector", SignatureStore.Resolve(project.FolderPath, project.InspectorSignaturePath));
+        AddSignatureError(errors, "Project Manager", SignatureStore.Resolve(project.FolderPath, project.ProjectManagerSignaturePath));
 
         return errors;
+    }
+
+    private static void AddSignatureError(List<string> errors, string role, SignatureResolveResult resolved)
+    {
+        if (resolved.Status == SignatureResolveStatus.Valid)
+        {
+            return;
+        }
+
+        if (resolved.Status == SignatureResolveStatus.OutsideProject)
+        {
+            errors.Add($"The {role} signature path resolves outside the project folder.");
+        }
+        else if (resolved.Status == SignatureResolveStatus.UnsupportedExtension)
+        {
+            errors.Add($"The {role} signature file type is not supported. Use PNG, JPG, or JPEG.");
+        }
+        else
+        {
+            errors.Add($"{role} signature file is missing.");
+        }
     }
 
     public static List<string> ValidateReportForGeneration(InspectionReport report)
@@ -41,16 +55,16 @@ public static class Validation
         var errors = new List<string>();
         AddRequired(errors, "Inspection date", report.Date == default ? string.Empty : report.Date.ToString("d"));
         AddRequired(errors, "Weather", report.Weather);
+        if (!string.IsNullOrWhiteSpace(report.Weather) && !WeatherOptions.IsValid(report.Weather))
+        {
+            errors.Add("Weather must be one of the approved options.");
+        }
+
         AddRequired(errors, "Location(s)", report.Locations);
         AddRequired(errors, "Cornerstone Inspector(s)", report.Inspectors);
         AddRequired(errors, "Personnel on site", report.PersonnelOnSite);
         AddRequired(errors, "Description of work inspected", report.DescriptionOfWork);
         AddRequired(errors, "Drawing sheets and sections", report.DrawingsReviewed);
-
-        if (report.Photos.Count == 0)
-        {
-            errors.Add("At least one photograph is required.");
-        }
 
         for (var i = 0; i < report.Photos.Count; i++)
         {

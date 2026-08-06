@@ -7,10 +7,21 @@ public static class ReportGenerator
     public static GenerationResult GenerateDraft(Project project, InspectionReport report)
     {
         var errors = Validation.ValidateProject(project);
-        errors.AddRange(Validation.ValidateReportForGeneration(report));
         if (errors.Count > 0)
         {
-            throw new GenerationException(errors);
+            throw new GenerationException(GenerationStage.ValidateProject, errors);
+        }
+
+        errors = Validation.ValidateReportForGeneration(report);
+        if (errors.Count > 0)
+        {
+            throw new GenerationException(GenerationStage.ValidateReport, errors);
+        }
+
+        errors = TemplateValidator.ValidateTemplate(project.TemplatePath);
+        if (errors.Count > 0)
+        {
+            throw new GenerationException(GenerationStage.ValidateTemplate, errors);
         }
 
         var outputPath = Path.Combine(

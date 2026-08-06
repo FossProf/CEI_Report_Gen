@@ -25,7 +25,12 @@ public partial class ReportEditorWindow : Window
 
         DatePicker.SelectedDate = report.Date;
         TemperatureBox.Text = report.Temperature;
-        WeatherBox.Text = report.Weather;
+        WeatherCombo.ItemsSource = WeatherOptions.All;
+        if (WeatherOptions.IsValid(report.Weather))
+        {
+            WeatherCombo.SelectedItem = report.Weather;
+        }
+
         LocationBox.Text = report.Locations;
         InspectorBox.Text = report.Inspectors;
         PersonnelBox.Text = report.PersonnelOnSite;
@@ -121,11 +126,13 @@ public partial class ReportEditorWindow : Window
         catch (GenerationException ex)
         {
             ShowErrors(ex.Errors);
+            ShowErrorDialog(ex);
             return;
         }
         catch (Exception ex)
         {
             ShowErrors(new[] { ex.Message });
+            ShowErrorDialog(ex);
             return;
         }
 
@@ -156,7 +163,7 @@ public partial class ReportEditorWindow : Window
     {
         _report.Date = DatePicker.SelectedDate ?? DateTime.Today;
         _report.Temperature = TemperatureBox.Text.Trim();
-        _report.Weather = WeatherBox.Text.Trim();
+        _report.Weather = WeatherCombo.SelectedItem as string ?? string.Empty;
         _report.Locations = LocationBox.Text.Trim();
         _report.Inspectors = InspectorBox.Text.Trim();
         _report.PersonnelOnSite = PersonnelBox.Text.Trim();
@@ -178,5 +185,47 @@ public partial class ReportEditorWindow : Window
 
         ErrorText.Text = string.Join(Environment.NewLine, errors.Select(e => "• " + e));
         ErrorText.Visibility = Visibility.Visible;
+    }
+
+    private void ShowErrorDialog(GenerationException ex)
+    {
+        var logPath = WriteErrorLog(ex.Stage?.ToString() ?? "Unknown", ex.Errors, null);
+        var dialog = new GenerationErrorDialog("Report generation failed during " + (ex.Stage?.ToString() ?? "report validation") + ".",
+            ex.Errors, logPath);
+        dialog.Owner = this;
+        dialog.ShowDialog();
+    }
+
+    private void ShowErrorDialog(Exception ex)
+    {
+        var logPath = WriteErrorLog("Unexpected", new[] { ex.Message }, ex);
+        var dialog = new GenerationErrorDialog("Report generation failed unexpectedly.",
+            new[] { ex.Message }, logPath);
+        dialog.Owner = this;
+        dialog.ShowDialog();
+    }
+
+    private string WriteErrorLog(string stage, IReadOnlyCollection<string> errors, Exception? exception)
+    {
+        var folder = ProjectLayout.ReportFolder(_project, _report.Number);
+        Directory.CreateDirectory(folder);
+        var logPath = Path.Combine(folder, "generation-error.log");
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("CEI Report Generator - generation diagnostics");
+        builder.AppendLine("Timestamp: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        builder.AppendLine("Stage: " + stage);
+        builder.AppendLine("Errors:");
+        foreach (var error in errors)
+        {
+            builder.AppendLine("  - " + error);
+        }
+
+        if (exception is not null)
+        {
+            builder.AppendLine("Exception: " + exception);
+        }
+
+        File.WriteAllText(logPath, builder.ToString());
+        return logPath;
     }
 }
