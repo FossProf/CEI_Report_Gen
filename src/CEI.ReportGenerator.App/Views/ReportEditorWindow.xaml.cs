@@ -1,5 +1,9 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
 using CEI.ReportGenerator.App.ViewModels;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
@@ -51,8 +55,16 @@ public partial class ReportEditorWindow : Window
             PhotoList.Items.Add(new PhotoItem(photo));
         }
 
-        UpdateRemoveButton();
+        UpdatePhotoNumbers();
+        UpdatePhotoButtons();
     }
+
+    private static readonly string[] PhotoExtensions = { ".png", ".jpg", ".jpeg", ".gif", ".bmp" };
+
+    private static bool IsPhotoFile(string path)
+        => PhotoExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+
+    private PhotoItem? _dragSource;
 
     private void AddPhotoButton_Click(object sender, RoutedEventArgs e)
     {
@@ -67,14 +79,27 @@ public partial class ReportEditorWindow : Window
             return;
         }
 
-        foreach (var path in dialog.FileNames)
+        AddPhotoFiles(dialog.FileNames);
+    }
+
+    private void AddPhotoFiles(IEnumerable<string> paths)
+    {
+        var anyAdded = false;
+        foreach (var path in paths.Where(IsPhotoFile))
         {
             var photo = new Photo { SourcePath = path };
             _report.Photos.Add(photo);
             PhotoList.Items.Add(new PhotoItem(photo));
+            anyAdded = true;
         }
 
-        UpdateRemoveButton();
+        if (!anyAdded)
+        {
+            return;
+        }
+
+        UpdatePhotoNumbers();
+        UpdatePhotoButtons();
     }
 
     private void RemovePhotoButton_Click(object sender, RoutedEventArgs e)
@@ -86,12 +111,168 @@ public partial class ReportEditorWindow : Window
 
         _report.Photos.Remove(item.Model);
         PhotoList.Items.Remove(item);
-        UpdateRemoveButton();
+        UpdatePhotoNumbers();
+        UpdatePhotoButtons();
     }
 
-    private void UpdateRemoveButton()
+    private void MoveUpPhotoButton_Click(object sender, RoutedEventArgs e)
     {
-        RemovePhotoButton.IsEnabled = PhotoList.Items.Count > 0;
+        if (PhotoList.SelectedItem is PhotoItem item)
+        {
+            MovePhoto(item, PhotoList.Items.IndexOf(item) - 1);
+        }
+    }
+
+    private void MoveDownPhotoButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (PhotoList.SelectedItem is PhotoItem item)
+        {
+            MovePhoto(item, PhotoList.Items.IndexOf(item) + 2);
+        }
+    }
+
+    private void PhotoList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdatePhotoButtons();
+    }
+
+    private void PhotoList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragSource = null;
+        if (e.OriginalSource is not DependencyObject source)
+        {
+            return;
+        }
+
+        if (FindVisualAncestor<TextBox>(source) is not null || FindVisualAncestor<ScrollBar>(source) is not null)
+        {
+            return;
+        }
+
+        _dragSource = (ItemsControl.ContainerFromElement(PhotoList, source) as ListBoxItem)?.Content as PhotoItem;
+    }
+
+    private void PhotoList_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragSource is null || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(null);
+        if (Math.Abs(position.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(position.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        DragDrop.DoDragDrop(PhotoList, new DataObject(typeof(PhotoItem), _dragSource), DragDropEffects.Move);
+        _dragSource = null;
+    }
+
+    private void PhotoList_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(PhotoItem)) || e.Data.GetDataPresent(DataFormats.FileDrop)
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void PhotoList_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(typeof(PhotoItem)) is PhotoItem moved)
+        {
+            MovePhoto(moved, GetDropIndex(e));
+        }
+        else if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
+        {
+            AddPhotoFiles(files);
+        }
+
+        e.Handled = true;
+    }
+
+    private int GetDropIndex(DragEventArgs e)
+    {
+        var point = e.GetPosition(PhotoList);
+        for (var i = 0; i < PhotoList.Items.Count; i++)
+        {
+            if (PhotoList.ItemContainerGenerator.ContainerFromIndex(i) is not ListBoxItem container)
+            {
+                continue;
+            }
+
+            var top = container.TranslatePoint(new Point(0, 0), PhotoList).Y;
+            if (point.Y < top + (container.ActualHeight / 2))
+            {
+                return i;
+            }
+        }
+
+        return PhotoList.Items.Count;
+    }
+
+    private void MovePhoto(PhotoItem item, int dropIndex)
+    {
+        var oldIndex = PhotoList.Items.IndexOf(item);
+        if (oldIndex < 0)
+        {
+            return;
+        }
+
+        var target = dropIndex;
+        if (oldIndex < dropIndex)
+        {
+            target--;
+        }
+
+        target = Math.Max(0, Math.Min(target, PhotoList.Items.Count - 1));
+        if (target == oldIndex)
+        {
+            return;
+        }
+
+        PhotoList.Items.Remove(item);
+        PhotoList.Items.Insert(target, item);
+        PhotoList.SelectedItem = item;
+        UpdatePhotoNumbers();
+        UpdatePhotoButtons();
+    }
+
+    private void UpdatePhotoNumbers()
+    {
+        for (var i = 0; i < PhotoList.Items.Count; i++)
+        {
+            if (PhotoList.Items[i] is PhotoItem item)
+            {
+                item.Number = i + 1;
+            }
+        }
+    }
+
+    private void UpdatePhotoButtons()
+    {
+        var hasSelection = PhotoList.SelectedItem is PhotoItem;
+        RemovePhotoButton.IsEnabled = hasSelection;
+        MoveUpPhotoButton.IsEnabled = hasSelection && PhotoList.SelectedIndex > 0;
+        MoveDownPhotoButton.IsEnabled = hasSelection
+            && PhotoList.SelectedIndex >= 0
+            && PhotoList.SelectedIndex < PhotoList.Items.Count - 1;
+    }
+
+    private static T? FindVisualAncestor<T>(DependencyObject current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     private void SaveDraftButton_Click(object sender, RoutedEventArgs e)

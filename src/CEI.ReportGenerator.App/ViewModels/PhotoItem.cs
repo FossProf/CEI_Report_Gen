@@ -10,6 +10,7 @@ public sealed class PhotoItem : ObservableObject
     private Photo _photo;
     private string _caption = string.Empty;
     private ImageSource? _thumbnail;
+    private int _number;
 
     public PhotoItem(Photo photo)
     {
@@ -25,6 +26,20 @@ public sealed class PhotoItem : ObservableObject
     public string FileName => string.IsNullOrWhiteSpace(_photo.SourcePath)
         ? "(missing)"
         : Path.GetFileName(_photo.SourcePath);
+
+    public int Number
+    {
+        get => _number;
+        set
+        {
+            if (SetProperty(ref _number, value))
+            {
+                OnPropertyChanged(nameof(NumberLabel));
+            }
+        }
+    }
+
+    public string NumberLabel => $"Photo {_number}:";
 
     public string Caption
     {
