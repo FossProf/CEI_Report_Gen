@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
@@ -37,6 +38,28 @@ public partial class MainWindow : Window
         {
             OpenProjectFolder(entry.FolderPath);
         }
+    }
+
+    private void RemoveSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (RecentList.SelectedItem is RecentProjectEntry entry)
+        {
+            RemoveRecentProject(entry);
+        }
+    }
+
+    private void RemoveRecentItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: RecentProjectEntry entry })
+        {
+            RemoveRecentProject(entry);
+        }
+    }
+
+    private void RemoveRecentProject(RecentProjectEntry entry)
+    {
+        RecentProjectStore.Remove(entry.FolderPath);
+        RefreshRecentProjects();
     }
 
     private void OpenProjectButton_Click(object sender, RoutedEventArgs e)

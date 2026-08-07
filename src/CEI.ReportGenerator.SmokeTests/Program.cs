@@ -137,6 +137,17 @@ try
         "relative template path resolved against project folder");
     Console.WriteLine("    ok: relative folderPath/templatePath resolved at load");
 
+    ProjectStore.Save(portableProject);
+    var savedJson = File.ReadAllText(Path.Combine(relativeJsonDir, "project.json"));
+    var savedDoc = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(savedJson);
+    Assert(
+        savedDoc.GetProperty("folderPath").GetString() == ".",
+        "save preserves relative folderPath");
+    Assert(
+        savedDoc.GetProperty("templatePath").GetString() == "Template.docx",
+        "save preserves relative templatePath");
+    Console.WriteLine("    ok: save keeps relative folderPath/templatePath portable");
+
     foreach (var w in new[] { "Sunny", "Partly Cloudy", "Overcast", "Rainy" })
     {
         Assert(WeatherOptions.IsValid(w), $"weather option '{w}' is valid");

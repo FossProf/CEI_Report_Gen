@@ -31,6 +31,11 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Margin="4">
+                                <StackPanel.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Remove from list" Click="RemoveRecentItem_Click" Tag="{Binding}"/>
+                                    </ContextMenu>
+                                </StackPanel.ContextMenu>
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                 <TextBlock Text="{Binding FolderPath}" Foreground="#777777" FontSize="11"
                                            TextTrimming="CharacterEllipsis"/>
@@ -44,6 +49,8 @@
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="OpenSelectedButton" Content="Open Selected" Width="120" Margin="0,0,8,0"
                     Padding="8,5" Click="OpenSelectedButton_Click"/>
+            <Button x:Name="RemoveSelectedButton" Content="Remove Selected" Width="130" Margin="0,0,8,0"
+                    Padding="8,5" Click="RemoveSelectedButton_Click"/>
             <Button x:Name="OpenProjectButton" Content="Open Project..." Width="130" Margin="0,0,8,0"
                     Padding="8,5" Click="OpenProjectButton_Click"/>
             <Button x:Name="NewProjectButton" Content="New Project..." Width="130"

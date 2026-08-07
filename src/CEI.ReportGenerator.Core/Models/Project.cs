@@ -36,6 +36,12 @@ public sealed class Project
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
     [JsonIgnore]
+    public string? RelativeFolderPath { get; set; }
+
+    [JsonIgnore]
+    public string? RelativeTemplatePath { get; set; }
+
+    [JsonIgnore]
     public string FilePath => Path.Combine(FolderPath, ProjectLayout.ProjectFileName);
 
     [JsonIgnore]

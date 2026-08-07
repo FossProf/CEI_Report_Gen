@@ -29,9 +29,22 @@ public static class RecentProjectStore
     public static List<RecentProjectEntry> Load()
     {
         var entries = JsonStore.Load<List<RecentProjectEntry>>(FilePath) ?? new List<RecentProjectEntry>();
-        return entries
-            .Where(e => Directory.Exists(e.FolderPath))
+        var valid = entries
+            .Where(e => ProjectLayout.IsValidProjectFolder(e.FolderPath))
             .OrderByDescending(e => e.LastOpenedUtc)
             .ToList();
+
+        if (valid.Count != entries.Count)
+        {
+            JsonStore.Save(FilePath, valid);
+        }
+
+        return valid;
+    }
+
+    public static void Remove(string folderPath)
+    {
+        var entries = Load().Where(e => !string.Equals(e.FolderPath, folderPath, StringComparison.OrdinalIgnoreCase)).ToList();
+        JsonStore.Save(FilePath, entries);
     }
 }

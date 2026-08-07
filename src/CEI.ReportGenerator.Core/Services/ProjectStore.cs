@@ -62,7 +62,30 @@ public static class ProjectStore
     public static void Save(Project project)
     {
         Directory.CreateDirectory(project.FolderPath);
-        JsonStore.Save(project.FilePath, project);
+
+        var absoluteFolderPath = project.FolderPath;
+        var absoluteTemplatePath = project.TemplatePath;
+        var filePath = Path.Combine(absoluteFolderPath, ProjectLayout.ProjectFileName);
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(project.RelativeFolderPath))
+            {
+                project.FolderPath = project.RelativeFolderPath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(project.RelativeTemplatePath))
+            {
+                project.TemplatePath = project.RelativeTemplatePath;
+            }
+
+            JsonStore.Save(filePath, project);
+        }
+        finally
+        {
+            project.FolderPath = absoluteFolderPath;
+            project.TemplatePath = absoluteTemplatePath;
+        }
     }
 
     public static Project? Load(string projectJsonPathOrFolder)
@@ -89,6 +112,7 @@ public static class ProjectStore
             && !Path.IsPathRooted(project.FolderPath)
             && projectJsonDirectory is not null)
         {
+            project.RelativeFolderPath = project.FolderPath;
             project.FolderPath = Path.GetFullPath(Path.Combine(projectJsonDirectory, project.FolderPath));
         }
 
@@ -96,6 +120,7 @@ public static class ProjectStore
             && !Path.IsPathRooted(project.TemplatePath)
             && Path.IsPathRooted(project.FolderPath))
         {
+            project.RelativeTemplatePath = project.TemplatePath;
             project.TemplatePath = Path.GetFullPath(Path.Combine(project.FolderPath, project.TemplatePath));
         }
     }
