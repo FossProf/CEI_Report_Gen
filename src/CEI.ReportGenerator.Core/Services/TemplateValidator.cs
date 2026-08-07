@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 
@@ -76,7 +77,7 @@ public static class TemplateValidator
             var text = CollectBodyText(mainPart.Document.Body);
             foreach (var placeholder in RequiredTextPlaceholders)
             {
-                if (!text.Contains(placeholder, StringComparison.Ordinal))
+                if (!ContainsPlaceholder(text, placeholder))
                 {
                     errors.Add($"Template is missing placeholder {placeholder}.");
                 }
@@ -140,6 +141,17 @@ public static class TemplateValidator
         }
 
         return builder.ToString();
+    }
+
+    private static bool ContainsPlaceholder(string text, string placeholder)
+    {
+        if (text.Contains(placeholder, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var key = placeholder.Substring(1, placeholder.Length - 2);
+        return Regex.IsMatch(text, $"\\{{{Regex.Escape(key)}\\s*;");
     }
 
     private static bool ContainsContentControlTag(Body body, string tag)

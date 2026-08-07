@@ -68,11 +68,6 @@ public static class Validation
 
         for (var i = 0; i < report.Photos.Count; i++)
         {
-            if (string.IsNullOrWhiteSpace(report.Photos[i].Caption))
-            {
-                errors.Add($"Photo {i + 1} requires a caption.");
-            }
-
             if (string.IsNullOrWhiteSpace(report.Photos[i].SourcePath) || !File.Exists(report.Photos[i].SourcePath))
             {
                 errors.Add($"Photo {i + 1} source image file is missing.");

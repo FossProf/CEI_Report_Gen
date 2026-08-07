@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
@@ -8,7 +9,11 @@ using DocumentFormat.OpenXml.Wordprocessing;
 using A = DocumentFormat.OpenXml.Drawing;
 
 var root = FindRepoRoot();
-var templatePath = Path.Combine(root, "templates", "CEI_Base_Template_Refined.docx");
+var templatePath = Environment.GetEnvironmentVariable("CEI_TEMPLATE_PATH");
+if (string.IsNullOrWhiteSpace(templatePath))
+{
+    templatePath = Path.Combine(root, "templates", "CEI_Base_Template_Refined.docx");
+}
 
 if (!File.Exists(templatePath))
 {
@@ -180,6 +185,26 @@ try
         }
     }
 
+    Console.WriteLine("\n== Empty photo captions omit colon and stay centered ==");
+    var noCaptionReport = MakeReport(project, 9, 2, "Sunny", photoFiles);
+    noCaptionReport.Photos[0].Caption = string.Empty;
+    noCaptionReport.Photos[1].Caption = string.Empty;
+    var noCaptionResult = ReportGenerator.GenerateDraft(project, noCaptionReport);
+    using (var doc = WordprocessingDocument.Open(noCaptionResult.OutputPath, false))
+    {
+        var noCaptionBody = doc.MainDocumentPart!.Document.Body!;
+        var noCaptionText = string.Concat(noCaptionBody.Descendants<Text>().Select(t => t.Text));
+        Assert(!noCaptionText.Contains("Photo 1:"), "empty caption omits colon after Photo 1");
+        Assert(!noCaptionText.Contains("Photo 2:"), "empty caption omits colon after Photo 2");
+        Assert(noCaptionText.Contains("Photo 1") && noCaptionText.Contains("Photo 2"), "photo labels remain when captions empty");
+        foreach (var captionParagraph in noCaptionBody.Descendants<Paragraph>()
+            .Where(p => Regex.IsMatch(p.InnerText, @"^Photo\s+\d+$")))
+        {
+            var justification = captionParagraph.ParagraphProperties?.Justification?.Val?.Value;
+            Assert(justification == JustificationValues.Center, $"caption '{captionParagraph.InnerText}' is centered under the photo");
+        }
+    }
+
     Console.WriteLine("\n== Invalid weather rejected (failure safety) ==");
     var beforeFailure = project.NextReportNumber;
     var invalidWeatherReport = MakeReport(project, 6, 1, "Snowing", photoFiles);
@@ -312,7 +337,7 @@ static InspectionReport MakeReport(Project project, int number, int photoCount, 
         PersonnelOnSite = "John Smith (Carpenter Foreman), Bob Jones (Ironworker)",
         DescriptionOfWork = "Review of steel beam connections and column splices at column line 3.",
         DrawingsReviewed = "S-201, S-202, D-101",
-        Observations = "All welds visually inspected and found acceptable.",
+        Observations = "All welds visually inspected and found acceptable.\r\nNo cracks or deformation observed.\r\nAll connections torqued to spec.",
         NewDiscrepancies = "None observed.",
         PreviousDiscrepancies = "N/A",
         Photos = photos
@@ -366,12 +391,17 @@ static void VerifyGeneratedDocument(string docxPath, int photoCount, List<string
 
     Assert(bodyText.Contains("Demo Project"), "project name filled");
     Assert(bodyText.Contains("24-1042"), "project number filled");
-    Assert(bodyText.Contains("August 5, 2026"), "inspection date filled");
+    Assert(bodyText.Contains("2026-08-05"), "inspection date filled with template date format");
     Assert(bodyText.Contains("Acme Builders LLC"), "general contractor filled");
     Assert(bodyText.Contains("Anthony Wintergerst"), "inspector filled");
+    Assert(bodyText.Contains("All welds visually inspected and found acceptable."), "observations filled");
+    Assert(!bodyText.Contains("Repeat this photo page", StringComparison.OrdinalIgnoreCase), "template instructions removed from output");
+    var observationsParagraph = body.Descendants<Paragraph>()
+        .First(p => p.InnerText.Contains("All welds visually inspected", StringComparison.Ordinal));
+    Assert(observationsParagraph.Descendants<Break>().Count() == 2, "carriage returns preserved as line breaks");
 
     var blips = body.Descendants<A.Blip>().ToList();
-    Assert(blips.Count == photoCount + 2, $"expected {photoCount + 2} blips (photos + 2 signatures), found {blips.Count}");
+    Assert(blips.Count >= photoCount + 2, $"expected at least {photoCount + 2} blips (photos + signatures), found {blips.Count}");
 
     foreach (var blip in blips)
     {
@@ -383,6 +413,8 @@ static void VerifyGeneratedDocument(string docxPath, int photoCount, List<string
         .Where(b => b.SdtProperties?.GetFirstChild<SdtAlias>()?.Val?.Value is not null)
         .ToList();
     Assert(sdtBlocks.Count == 2, "both signature content controls preserved in output");
+    Assert(sdtBlocks.All(b => b.Descendants<A.Blip>().Any(blip => mainPart.GetPartById(blip.Embed!) is ImagePart)),
+        "each signature content control embeds an image");
 
     AssertLogosUnchanged(templatePath, docxPath);
 

@@ -13,9 +13,11 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
                 <TextBlock x:Name="ReportNumberText" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <TextBlock Text="Inspection date *" Style="{StaticResource FieldLabel}" Margin="24,0,6,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Report #" Style="{StaticResource FieldLabel}" Margin="20,0,6,0" VerticalAlignment="Center"/>
+                <TextBox x:Name="ReportNumberBox" Width="80" VerticalAlignment="Center" Style="{StaticResource FieldBox}"/>
+                <TextBlock Text="Inspection date *" Style="{StaticResource FieldLabel}" Margin="20,0,6,0" VerticalAlignment="Center"/>
                 <DatePicker x:Name="DatePicker" Width="160" VerticalAlignment="Center" SelectedDateFormat="Long"/>
             </StackPanel>
         </StackPanel>

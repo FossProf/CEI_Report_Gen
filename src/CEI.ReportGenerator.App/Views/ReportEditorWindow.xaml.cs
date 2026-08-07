@@ -24,8 +24,9 @@ public partial class ReportEditorWindow : Window
         _project = project;
         _report = report;
 
-        ReportNumberText.Text = $"Report {ProjectLayout.FormatReportNumber(report.Number)}" +
-                                (isNew ? "  (new — draft)" : "");
+        ReportNumberText.Text = isNew ? "New report" : $"Report {ProjectLayout.FormatReportNumber(report.Number)}";
+        ReportNumberBox.Text = report.Number.ToString();
+        ReportNumberBox.IsEnabled = isNew;
 
         DatePicker.SelectedDate = report.Date;
         TemperatureBox.Text = report.Temperature;
@@ -277,7 +278,12 @@ public partial class ReportEditorWindow : Window
 
     private void SaveDraftButton_Click(object sender, RoutedEventArgs e)
     {
-        CollectFromUi();
+        var errors = CollectFromUi();
+        if (errors.Count > 0)
+        {
+            ShowErrors(errors);
+            return;
+        }
 
         try
         {
@@ -296,7 +302,13 @@ public partial class ReportEditorWindow : Window
 
     private void GenerateButton_Click(object sender, RoutedEventArgs e)
     {
-        CollectFromUi();
+        var errors = CollectFromUi();
+        if (errors.Count > 0)
+        {
+            ShowErrors(errors);
+            return;
+        }
+
         ShowErrors(Array.Empty<string>());
 
         GenerationResult result;
@@ -340,8 +352,29 @@ public partial class ReportEditorWindow : Window
         }
     }
 
-    private void CollectFromUi()
+    private IReadOnlyCollection<string> CollectFromUi()
     {
+        var errors = new List<string>();
+
+        if (ReportNumberBox.IsEnabled)
+        {
+            if (!int.TryParse(ReportNumberBox.Text.Trim(), out var number) || number <= 0)
+            {
+                errors.Add("Report number must be a positive whole number.");
+            }
+            else if (number != _report.Number)
+            {
+                if (ReportStore.LoadReport(_project, number) is not null)
+                {
+                    errors.Add($"A report with number {number} already exists. Choose a different number.");
+                }
+                else
+                {
+                    _report.Number = number;
+                }
+            }
+        }
+
         _report.Date = DatePicker.SelectedDate ?? DateTime.Today;
         _report.Temperature = TemperatureBox.Text.Trim();
         _report.Weather = WeatherCombo.SelectedItem as string ?? string.Empty;
@@ -354,6 +387,8 @@ public partial class ReportEditorWindow : Window
         _report.NewDiscrepancies = NewDiscrepancyBox.Text.Trim();
         _report.PreviousDiscrepancies = OldDiscrepancyBox.Text.Trim();
         _report.Photos = PhotoList.Items.OfType<PhotoItem>().Select(p => p.Model).ToList();
+
+        return errors;
     }
 
     private void ShowErrors(IReadOnlyCollection<string> errors)

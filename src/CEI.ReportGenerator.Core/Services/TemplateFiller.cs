@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CEI.ReportGenerator.Core.Models;
 using DocumentFormat.OpenXml;
@@ -91,6 +92,8 @@ public static class TemplateFiller
                 stage = GenerationStage.InsertSignatures;
                 ReplaceSignatures(mainPart, project);
 
+                RemoveInstructionText(body);
+
                 mainPart.Document.Save();
             }
 
@@ -171,9 +174,9 @@ public static class TemplateFiller
         return photos;
     }
 
-    private static Dictionary<string, string> BuildValueDictionary(Project project, InspectionReport report)
+    private static Dictionary<string, object> BuildValueDictionary(Project project, InspectionReport report)
     {
-        return new Dictionary<string, string>(StringComparer.Ordinal)
+        return new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["project.name"] = project.Name,
             ["project.num"] = project.Number,
@@ -181,7 +184,7 @@ public static class TemplateFiller
             ["project.contract"] = project.ContractManager,
             ["project.general"] = project.GeneralContractor,
             ["project.report.num"] = ProjectLayout.FormatReportNumber(report.Number),
-            ["project.report.date"] = report.Date.ToString("MMMM d, yyyy"),
+            ["project.report.date"] = report.Date,
             ["project.report.temp"] = OrNotApplicable(report.Temperature),
             ["project.report.weather"] = report.Weather,
             ["project.report.location"] = report.Locations,
@@ -198,7 +201,7 @@ public static class TemplateFiller
     private static string OrNotApplicable(string value)
         => string.IsNullOrWhiteSpace(value) ? "N/A" : value;
 
-    private static void FillTextPlaceholders(Body body, IReadOnlyDictionary<string, string> values)
+    private static void FillTextPlaceholders(Body body, IReadOnlyDictionary<string, object> values)
     {
         foreach (var paragraph in body.Descendants<Paragraph>())
         {
@@ -206,7 +209,7 @@ public static class TemplateFiller
         }
     }
 
-    private static void ReplaceInParagraph(Paragraph paragraph, IReadOnlyDictionary<string, string> values)
+    private static void ReplaceInParagraph(Paragraph paragraph, IReadOnlyDictionary<string, object> values)
     {
         var runs = paragraph.Elements<Run>().ToList();
         if (runs.Count == 0)
@@ -225,8 +228,7 @@ public static class TemplateFiller
         var plans = new List<(int Start, int End, string Value)>();
         foreach (var match in matches)
         {
-            var key = NormalizePlaceholder(match.Groups[1].Value);
-            if (values.TryGetValue(key, out var value))
+            if (TryResolvePlaceholder(match.Groups[1].Value, values, out var value))
             {
                 plans.Add((match.Index, match.Index + match.Length, value));
             }
@@ -298,6 +300,52 @@ public static class TemplateFiller
         }
     }
 
+    private static bool TryResolvePlaceholder(string inner, IReadOnlyDictionary<string, object> values, out string value)
+    {
+        value = string.Empty;
+        string? format = null;
+        var semicolon = inner.IndexOf(';');
+        if (semicolon >= 0)
+        {
+            format = inner[(semicolon + 1)..].Trim();
+            inner = inner[..semicolon];
+        }
+
+        var key = NormalizePlaceholder(inner);
+        if (!values.TryGetValue(key, out var raw))
+        {
+            return false;
+        }
+
+        value = FormatValue(raw, format);
+        return true;
+    }
+
+    private static string FormatValue(object value, string? format)
+    {
+        if (value is DateTime date)
+        {
+            if (string.IsNullOrEmpty(format))
+            {
+                return date.ToString("MMMM d, yyyy");
+            }
+
+            return date.ToString(NormalizeDateFormat(format));
+        }
+
+        if (string.IsNullOrEmpty(format))
+        {
+            return Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
+        }
+
+        return value is IFormattable formattable
+            ? formattable.ToString(format, CultureInfo.CurrentCulture)
+            : Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
+    }
+
+    private static string NormalizeDateFormat(string format)
+        => format.Replace("mm", "MM");
+
     private static int RunIndexOfOffset(IReadOnlyList<int> offsets, int offset)
     {
         for (var i = 0; i < offsets.Count - 1; i++)
@@ -330,18 +378,25 @@ public static class TemplateFiller
 
     private static void SetRunText(Run run, string text)
     {
-        var textElements = run.Elements<Text>().ToList();
-        if (textElements.Count == 0)
+        text = text.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        foreach (var element in run.Elements().ToList())
         {
-            run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
-            return;
+            if (element is not RunProperties)
+            {
+                element.Remove();
+            }
         }
 
-        textElements[0].Text = text;
-        textElements[0].Space = SpaceProcessingModeValues.Preserve;
-        for (var i = 1; i < textElements.Count; i++)
+        var lines = text.Split('\n');
+        for (var i = 0; i < lines.Length; i++)
         {
-            textElements[i].Remove();
+            if (i > 0)
+            {
+                run.AppendChild(new Break());
+            }
+
+            run.AppendChild(new Text(lines[i]) { Space = SpaceProcessingModeValues.Preserve });
         }
     }
 
@@ -419,17 +474,161 @@ public static class TemplateFiller
 
     private static void FillCaption(Paragraph paragraph, int photoNumber, string caption)
     {
-        foreach (var run in paragraph.Elements<Run>())
+        var runs = paragraph.Elements<Run>().ToList();
+        if (runs.Count == 0)
         {
-            var text = TextOf(run);
-            if (text.Contains(".caption}"))
+            return;
+        }
+
+        var texts = runs.Select(TextOf).ToList();
+        var full = string.Concat(texts);
+        var span = Regex.Match(full, @"\{[^{}\r\n]*caption\}");
+        if (!span.Success)
+        {
+            return;
+        }
+
+        var offsets = new int[runs.Count + 1];
+        for (var i = 0; i < runs.Count; i++)
+        {
+            offsets[i + 1] = offsets[i] + texts[i].Length;
+        }
+
+        var spanStartRun = RunIndexOfOffset(offsets, span.Index);
+        var labelProperties = runs[0].RunProperties?.CloneNode(true) as RunProperties;
+        var captionProperties = runs[spanStartRun].RunProperties?.CloneNode(true) as RunProperties;
+
+        paragraph.RemoveAllChildren<Run>();
+
+        var labelText = string.IsNullOrEmpty(caption) ? $"Photo {photoNumber}" : $"Photo {photoNumber}: ";
+        if (!string.IsNullOrEmpty(labelText))
+        {
+            var labelRun = new Run();
+            if (labelProperties is not null)
             {
-                SetRunText(run, caption);
+                labelRun.Append(labelProperties);
             }
-            else if (Regex.IsMatch(text, @"^Photo\s*\d*\s*:"))
+
+            labelRun.Append(new Text(labelText) { Space = SpaceProcessingModeValues.Preserve });
+            paragraph.Append(labelRun);
+        }
+
+        if (!string.IsNullOrEmpty(caption))
+        {
+            var captionRun = new Run();
+            if (captionProperties is not null)
             {
-                SetRunText(run, $"Photo {photoNumber}: ");
+                captionRun.Append(captionProperties);
             }
+
+            SetRunText(captionRun, caption);
+            paragraph.Append(captionRun);
+        }
+    }
+
+    private static void RemoveInstructionText(Body body)
+    {
+        foreach (var paragraph in body.Descendants<Paragraph>().ToList())
+        {
+            StripInstructionsFromParagraph(paragraph);
+        }
+    }
+
+    private static void StripInstructionsFromParagraph(Paragraph paragraph)
+    {
+        var runs = paragraph.Elements<Run>().ToList();
+        if (runs.Count == 0)
+        {
+            return;
+        }
+
+        var texts = runs.Select(TextOf).ToList();
+        var full = string.Concat(texts);
+        var matches = Regex.Matches(full, @"\{([^{}\r\n]+)\}").Cast<Match>().ToList();
+        if (matches.Count == 0)
+        {
+            return;
+        }
+
+        var spans = new List<(int Start, int End)>();
+        foreach (var match in matches)
+        {
+            if (NormalizePlaceholder(match.Groups[1].Value).StartsWith("project.", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            spans.Add((match.Index, match.Index + match.Length));
+        }
+
+        if (spans.Count == 0)
+        {
+            return;
+        }
+
+        var offsets = new int[runs.Count + 1];
+        for (var i = 0; i < runs.Count; i++)
+        {
+            offsets[i + 1] = offsets[i] + texts[i].Length;
+        }
+
+        var newTexts = texts.ToArray();
+        var clearedRuns = new HashSet<int>();
+
+        foreach (var (start, end) in spans)
+        {
+            var first = RunIndexOfOffset(offsets, start);
+            var last = RunIndexOfOffset(offsets, end - 1);
+            if (first < 0 || last < 0)
+            {
+                continue;
+            }
+
+            if (first == last)
+            {
+                var localStart = start - offsets[first];
+                var localEnd = end - offsets[first];
+                newTexts[first] = newTexts[first][..localStart] + newTexts[first][localEnd..];
+            }
+            else
+            {
+                var prefixLen = start - offsets[first];
+                newTexts[first] = newTexts[first][..prefixLen];
+                for (var k = first + 1; k < last; k++)
+                {
+                    newTexts[k] = string.Empty;
+                    clearedRuns.Add(k);
+                }
+
+                var suffixStart = end - offsets[last];
+                newTexts[last] = newTexts[last][suffixStart..];
+                if (newTexts[last].Length == 0)
+                {
+                    clearedRuns.Add(last);
+                }
+            }
+        }
+
+        for (var i = 0; i < runs.Count; i++)
+        {
+            if (clearedRuns.Contains(i))
+            {
+                if (string.IsNullOrEmpty(newTexts[i]))
+                {
+                    runs[i].Remove();
+                    continue;
+                }
+            }
+
+            if (newTexts[i] != texts[i])
+            {
+                SetRunText(runs[i], newTexts[i]);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(PhotoTable.ParagraphText(paragraph)))
+        {
+            paragraph.Remove();
         }
     }
 
