@@ -109,6 +109,34 @@ try
     Assert(Validation.ValidateProject(uiProject).Count == 0, "ui flow: project validates clean");
     Console.WriteLine("    ok: project created from dropdown-relative signature paths and validates clean");
 
+    Console.WriteLine("\n== Project load with relative folder path ==");
+    var relativeJsonDir = Path.Combine(workspace, "portable_project");
+    Directory.CreateDirectory(relativeJsonDir);
+    File.WriteAllText(Path.Combine(relativeJsonDir, "project.json"), """
+    {
+      "name": "Portable",
+      "number": "1",
+      "owner": "O",
+      "contractManager": "CM",
+      "generalContractor": "GC",
+      "folderPath": ".",
+      "templatePath": "Template.docx",
+      "inspectorSignaturePath": "Signatures/missing.png",
+      "projectManagerSignaturePath": "Signatures/missing.png",
+      "nextReportNumber": 1
+    }
+    """);
+    var portableProject = ProjectStore.Load(Path.Combine(relativeJsonDir, "project.json"));
+    Assert(portableProject is not null, "portable project loaded");
+    Assert(Path.IsPathRooted(portableProject!.FolderPath), "relative folder path normalized to absolute");
+    Assert(
+        portableProject.FolderPath.Equals(Path.GetFullPath(relativeJsonDir), StringComparison.OrdinalIgnoreCase),
+        "relative folder resolves next to project.json");
+    Assert(
+        portableProject.TemplatePath.Equals(Path.Combine(portableProject.FolderPath, "Template.docx"), StringComparison.OrdinalIgnoreCase),
+        "relative template path resolved against project folder");
+    Console.WriteLine("    ok: relative folderPath/templatePath resolved at load");
+
     foreach (var w in new[] { "Sunny", "Partly Cloudy", "Overcast", "Rainy" })
     {
         Assert(WeatherOptions.IsValid(w), $"weather option '{w}' is valid");

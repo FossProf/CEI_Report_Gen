@@ -1,0 +1,13 @@
+{
+  "name": "CMF",
+  "number": "24-0001",
+  "owner": "Cornerstone Engineering \u0026 Inspection",
+  "contractManager": "Sample Contract Manager",
+  "generalContractor": "Sample General Contractor",
+  "folderPath": ".",
+  "templatePath": "Template.docx",
+  "inspectorSignaturePath": "Signatures/Anthony Wintergerst.png",
+  "projectManagerSignaturePath": "Signatures/Georgiy Orlov.jpg",
+  "nextReportNumber": 1,
+  "createdUtc": "2026-08-07T01:24:18.3322935Z"
+}

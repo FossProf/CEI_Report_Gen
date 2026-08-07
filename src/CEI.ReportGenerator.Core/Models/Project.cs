@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using CEI.ReportGenerator.Core.Services;
 
 namespace CEI.ReportGenerator.Core.Models;
@@ -34,13 +35,17 @@ public sealed class Project
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
+    [JsonIgnore]
     public string FilePath => Path.Combine(FolderPath, ProjectLayout.ProjectFileName);
 
+    [JsonIgnore]
     public string SignatureFolderPath => Path.Combine(FolderPath, ProjectLayout.SignaturesFolderName);
 
+    [JsonIgnore]
     public string? ResolvedInspectorSignaturePath
         => SignatureStore.Resolve(FolderPath, InspectorSignaturePath).FullPath;
 
+    [JsonIgnore]
     public string? ResolvedProjectManagerSignaturePath
         => SignatureStore.Resolve(FolderPath, ProjectManagerSignaturePath).FullPath;
 }

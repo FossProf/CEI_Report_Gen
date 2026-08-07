@@ -51,6 +51,11 @@ picked with dropdowns.
 CEI_Report_Gen/
 ├── templates/
 │   └── CEI_Base_Template_Refined.docx     approved template (placeholders + signature controls)
+├── Signatures/                            shared signature source library
+│   ├── Anthony Wintergerst.png
+│   └── Georgiy Orlov.jpg
+├── projects/                              project store
+│   └── CMF/                               sample project (openable in the app)
 ├── tools/
 │   └── UpdateTemplateTags/                adds signature content controls to the template
 ├── src/
@@ -59,6 +64,11 @@ CEI_Report_Gen/
 │   └── CEI.ReportGenerator.SmokeTests/    end-to-end console verification
 ```
 
+`Signatures/` is the shared source library you import from when setting up a project.
+`projects/` holds app-created project folders. `projects/CMF/` is a sample project with
+sample configuration values; open its folder from the app's main window to use it as a
+starting point.
+
 A project folder created by the app looks like:
 
 ```
@@ -66,14 +76,18 @@ A project folder created by the app looks like:
 ├── project.json
 ├── Template.docx
 ├── Signatures/
-│   ├── inspector_signature.png
-│   └── pm_signature.png
+│   ├── Anthony Wintergerst.png
+│   └── Georgiy Orlov.jpg
 └── Reports/
     └── 0001/
         ├── report.json
         ├── 0001_SpecialInspectionReport.docx
         └── photos/
 ```
+
+`project.json` stores `folderPath` and `templatePath` relative to the project folder when
+possible, so a project folder can be moved or checked into a repository and reopened
+anywhere. Absolute paths (chosen by the user at creation time) are kept as-is.
 
 ## Template placeholders
 

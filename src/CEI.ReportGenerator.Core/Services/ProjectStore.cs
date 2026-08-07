@@ -68,7 +68,36 @@ public static class ProjectStore
     public static Project? Load(string projectJsonPathOrFolder)
     {
         var path = ResolveProjectJson(projectJsonPathOrFolder);
-        return path is null ? null : JsonStore.Load<Project>(path);
+        if (path is null)
+        {
+            return null;
+        }
+
+        var project = JsonStore.Load<Project>(path);
+        if (project is null)
+        {
+            return null;
+        }
+
+        NormalizePaths(project, Path.GetDirectoryName(path));
+        return project;
+    }
+
+    private static void NormalizePaths(Project project, string? projectJsonDirectory)
+    {
+        if (!string.IsNullOrWhiteSpace(project.FolderPath)
+            && !Path.IsPathRooted(project.FolderPath)
+            && projectJsonDirectory is not null)
+        {
+            project.FolderPath = Path.GetFullPath(Path.Combine(projectJsonDirectory, project.FolderPath));
+        }
+
+        if (!string.IsNullOrWhiteSpace(project.TemplatePath)
+            && !Path.IsPathRooted(project.TemplatePath)
+            && Path.IsPathRooted(project.FolderPath))
+        {
+            project.TemplatePath = Path.GetFullPath(Path.Combine(project.FolderPath, project.TemplatePath));
+        }
     }
 
     public static string? ResolveProjectJson(string projectJsonPathOrFolder)
