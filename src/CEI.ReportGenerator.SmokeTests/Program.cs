@@ -84,6 +84,31 @@ try
     Assert(reloadedProject!.InspectorSignaturePath == project.InspectorSignaturePath, "relative signature path survives reload");
     Assert(reloadedProject.NextReportNumber == 1, "next report number still 1 (nothing finalized)");
 
+    Console.WriteLine("\n== Signature UI flow (project-relative dropdown paths) ==");
+    var uiProjectFolder = Path.Combine(workspace, "projects", "UI Flow Project");
+    var uiImported = SignatureStore.Import(uiProjectFolder, photoFiles[3], replaceIfExists: false);
+    Assert(uiImported is not null, "ui flow: signature imported into project folder");
+    var uiImportedPm = SignatureStore.Import(uiProjectFolder, photoFiles[4], replaceIfExists: false);
+    Assert(uiImportedPm is not null, "ui flow: pm signature imported into project folder");
+    var uiStoredInspector = SignatureStore.SignatureRelativePath(Path.GetFileName(uiImported!)!);
+    var uiStoredPm = SignatureStore.SignatureRelativePath(Path.GetFileName(uiImportedPm!)!);
+    Project uiProject;
+    try
+    {
+        uiProject = ProjectStore.Create(
+            uiProjectFolder, "UI Flow Project", "99", "Owner", "CM", "GC",
+            templatePath, uiStoredInspector, uiStoredPm);
+    }
+    catch (Exception ex)
+    {
+        throw new Exception($"UI flow project creation failed: {ex.Message}");
+    }
+    Assert(uiProject.InspectorSignaturePath == uiStoredInspector, "ui flow: inspector signature path stored as-is");
+    Assert(SignatureStore.Resolve(uiProjectFolder, uiStoredInspector).Status == SignatureResolveStatus.Valid, "ui flow: inspector signature resolves as valid");
+    Assert(SignatureStore.Resolve(uiProjectFolder, uiStoredPm).Status == SignatureResolveStatus.Valid, "ui flow: pm signature resolves as valid");
+    Assert(Validation.ValidateProject(uiProject).Count == 0, "ui flow: project validates clean");
+    Console.WriteLine("    ok: project created from dropdown-relative signature paths and validates clean");
+
     foreach (var w in new[] { "Sunny", "Partly Cloudy", "Overcast", "Rainy" })
     {
         Assert(WeatherOptions.IsValid(w), $"weather option '{w}' is valid");

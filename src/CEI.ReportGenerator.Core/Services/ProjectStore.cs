@@ -31,19 +31,32 @@ public static class ProjectStore
 
     private static string StoreSignature(Project project, string signatureSourcePath)
     {
-        if (string.IsNullOrWhiteSpace(signatureSourcePath) || !File.Exists(signatureSourcePath))
+        if (string.IsNullOrWhiteSpace(signatureSourcePath))
         {
             throw new InvalidOperationException("A signature image file is required.");
         }
 
-        var relative = SignatureStore.RelativePath(project.FolderPath, signatureSourcePath);
-        if (relative is not null)
+        var resolved = SignatureStore.Resolve(project.FolderPath, signatureSourcePath);
+        if (resolved.Status == SignatureResolveStatus.Valid)
         {
-            return relative;
+            return SignatureStore.RelativePath(project.FolderPath, resolved.FullPath!)!;
         }
 
-        var imported = SignatureStore.Import(project.FolderPath, signatureSourcePath, replaceIfExists: true);
-        return imported ?? throw new InvalidOperationException("Signature image could not be stored in the project.");
+        if (resolved.Status == SignatureResolveStatus.UnsupportedExtension)
+        {
+            throw new InvalidOperationException("Only PNG, JPG, and JPEG signature images are supported.");
+        }
+
+        if (resolved.Status == SignatureResolveStatus.OutsideProject)
+        {
+            var imported = SignatureStore.Import(project.FolderPath, signatureSourcePath, replaceIfExists: true);
+            if (imported is not null)
+            {
+                return imported;
+            }
+        }
+
+        throw new InvalidOperationException("A signature image file is required.");
     }
 
     public static void Save(Project project)
