@@ -221,10 +221,19 @@ try
         e => e.Contains("Inspector signature", StringComparison.OrdinalIgnoreCase));
 
     Console.WriteLine("\n== Draft save and finalize (3-photo report) ==");
-    ReportGenerator.SaveDraft(project, finalizeReport!);
+    finalizeReport!.Photos = new[]
+    {
+        photoFiles[0], // image1.png
+        photoFiles[2], // image3.png (distinct content from image1)
+        photoFiles[4]  // image5.jpeg
+    }.Select(p => new Photo { SourcePath = p, Caption = "Site photo documentation." }).ToList();
+    ReportGenerator.SaveDraft(project, finalizeReport);
     Assert(File.Exists(ProjectLayout.ReportFilePath(project, finalizeReport!.Number)), "report.json draft exists");
     var photosFolder = ProjectLayout.ReportPhotosFolder(project, finalizeReport.Number);
     Assert(Directory.GetFiles(photosFolder).Length == 3, "3 photos copied to report folder");
+    var storedNames = Directory.GetFiles(photosFolder).Select(Path.GetFileName).OrderBy(n => n).ToArray();
+    var sourceNames = finalizeReport.Photos.Select(p => Path.GetFileName(p.SourcePath)).OrderBy(n => n).ToArray();
+    Assert(storedNames.SequenceEqual(sourceNames), "stored photos keep original file names (order-independent)");
 
     ReportGenerator.FinalizeReport(project, finalizeReport, finalizeResult!.OutputPath);
     Assert(finalizeReport.Status == ReportStatus.Final, "report status is Final");
@@ -239,6 +248,23 @@ try
 
     var allReports = ReportStore.LoadAllReports(finalProject);
     Assert(allReports.Count == 1, "one report.json listed in project (only the finalized report was saved)");
+
+    Console.WriteLine("\n== Identical photo content stored once (dedupe) ==");
+    var dedupeProject = ProjectStore.Create(
+        Path.Combine(workspace, "dedupe_project"), "Dedupe", "7", "O", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var dedupeReport = MakeReport(dedupeProject, 1, 3, "Sunny", new[] { photoFiles[0], photoFiles[1], photoFiles[2] });
+    ReportStore.SaveReport(dedupeProject, dedupeReport);
+    var dedupeStored = Directory.GetFiles(ProjectLayout.ReportPhotosFolder(dedupeProject, 1)).Length;
+    Assert(dedupeStored == 2, $"identical photos stored once (expected 2 distinct files, got {dedupeStored})");
+    Assert(
+        dedupeReport.Photos[0].StoredFileName == dedupeReport.Photos[1].StoredFileName,
+        "identical photos share the same stored file");
+    Assert(
+        dedupeReport.Photos[1].StoredFileName != dedupeReport.Photos[2].StoredFileName,
+        "distinct photos keep distinct stored files");
+    Assert(dedupeReport.Photos[0].StoredFileName == "image1.png", "stored photo keeps original file name");
+    Console.WriteLine("    ok: identical content deduped, distinct content preserved with original names");
 
     Console.WriteLine("\nALL SMOKE TESTS PASSED");
     return 0;
