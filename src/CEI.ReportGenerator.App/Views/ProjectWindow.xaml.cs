@@ -6,7 +6,6 @@ using System.Windows.Input;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
-using ProjectValidation = CEI.ReportGenerator.Core.Services.Validation;
 
 namespace CEI.ReportGenerator.App.Views;
 
@@ -14,45 +13,27 @@ public partial class ProjectWindow : Window
 {
     private readonly Project _project;
     private bool _reportLoadWarningShown;
+    private ReportStore.ReportLoadResult _currentLoadResult = new(Array.Empty<InspectionReport>(), Array.Empty<ReportStore.ReportLoadIssue>());
+    private ProjectDashboardSummary _dashboardSummary = new()
+    {
+        ProjectName = string.Empty,
+        ProjectNumber = string.Empty,
+        Owner = string.Empty,
+        ContractManager = string.Empty,
+        GeneralContractor = string.Empty,
+        NextReportNumber = 1,
+        TotalReports = 0,
+        FinalReports = 0,
+        DraftReports = 0,
+        LoadIssueCount = 0,
+        Readiness = new ProjectReadiness()
+    };
 
     public ProjectWindow(Project project)
     {
         InitializeComponent();
         _project = project;
-        RefreshProjectHeader();
-        RefreshReports();
-        UpdateReportSelectionState();
-    }
-
-    private void RefreshProjectHeader()
-    {
-        ProjectTitle.Text = _project.Name;
-        ProjectDetails.Text =
-            $"#{_project.Number}  *  Owner: {_project.Owner}  *  Contract Manager: {_project.ContractManager}  *  General Contractor: {_project.GeneralContractor}";
-        Title = $"{_project.Name} - CEI Report Generator";
-    }
-
-    private void RefreshReports()
-    {
-        var loadResult = ReportStore.LoadAllReports(_project);
-        ReportsGrid.ItemsSource = loadResult.Reports
-            .OrderByDescending(r => r.Number)
-            .Select(r => new ReportListItem(r))
-            .ToList();
-
-        if (loadResult.Issues.Count > 0 && !_reportLoadWarningShown)
-        {
-            _reportLoadWarningShown = true;
-            var lines = loadResult.Issues.Take(3)
-                .Select(i => $"{i.Path}: {i.Message}");
-            MessageBox.Show(
-                this,
-                "One or more saved reports could not be loaded:" + Environment.NewLine + string.Join(Environment.NewLine, lines),
-                "Report Load Warning",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-        }
-
+        RefreshDashboard();
         UpdateReportSelectionState();
     }
 
@@ -179,6 +160,93 @@ public partial class ProjectWindow : Window
             MessageBoxImage.Information);
     }
 
+    private void RefreshDashboard()
+    {
+        _currentLoadResult = ReportStore.LoadAllReports(_project);
+        _dashboardSummary = ProjectDashboardSummaryBuilder.Build(_project, _currentLoadResult);
+
+        ReportsGrid.ItemsSource = _currentLoadResult.Reports
+            .OrderByDescending(r => r.Number)
+            .Select(r => new ReportListItem(r))
+            .ToList();
+
+        RefreshProjectHeader();
+        RefreshReadinessPanel();
+        RefreshReportCounts();
+        RefreshStatusBar();
+        RefreshReportLoadWarning();
+        UpdateReportSelectionState();
+    }
+
+    private void RefreshProjectHeader()
+    {
+        ProjectTitle.Text = _dashboardSummary.ProjectName;
+        ProjectNumberText.Text = $"Project #{_dashboardSummary.ProjectNumber}";
+        OwnerText.Text = $"Owner: {_dashboardSummary.Owner}";
+        ContractManagerText.Text = $"Contract Manager: {_dashboardSummary.ContractManager}";
+        GeneralContractorText.Text = $"General Contractor: {_dashboardSummary.GeneralContractor}";
+        Title = $"{_dashboardSummary.ProjectName} - CEI Report Generator";
+    }
+
+    private void RefreshReportCounts()
+    {
+        NextReportText.Text = _dashboardSummary.NextReportNumberText;
+        TotalReportsText.Text = _dashboardSummary.TotalReports.ToString();
+        FinalReportsText.Text = _dashboardSummary.FinalReports.ToString();
+        DraftReportsText.Text = _dashboardSummary.DraftReports.ToString();
+
+        EmptyReportsText.Visibility = _dashboardSummary.HasReports ? Visibility.Collapsed : Visibility.Visible;
+        if (_dashboardSummary.HasLoadIssues)
+        {
+            LoadIssuesText.Text = _dashboardSummary.LoadIssueMessage;
+            LoadIssuesText.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            LoadIssuesText.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void RefreshReadinessPanel()
+    {
+        var readiness = _dashboardSummary.Readiness;
+        ApplyReadinessText(TemplateReadinessText, "Template", readiness.TemplateReady, readiness.TemplateIssues, "Attention");
+        ApplyReadinessText(InspectorReadinessText, "Inspector Signature", readiness.InspectorSignatureReady, readiness.InspectorSignatureIssues, "Missing/Invalid");
+        ApplyReadinessText(ProjectManagerReadinessText, "Project Manager Signature", readiness.ProjectManagerSignatureReady, readiness.ProjectManagerSignatureIssues, "Missing/Invalid");
+        ApplyReadinessText(ConfigurationReadinessText, "Project Configuration", readiness.ProjectConfigurationReady, readiness.ProjectConfigurationIssues, "Attention");
+    }
+
+    private void RefreshStatusBar()
+    {
+        StatusBarProjectText.Text = $"Project: {_dashboardSummary.ProjectName}";
+        StatusBarNextReportText.Text = $"Next Report: {_dashboardSummary.NextReportNumberText}";
+        StatusBarReadinessText.Text = $"Status: {_dashboardSummary.StatusText}";
+    }
+
+    private void RefreshReportLoadWarning()
+    {
+        if (_currentLoadResult.Issues.Count == 0 || _reportLoadWarningShown)
+        {
+            return;
+        }
+
+        _reportLoadWarningShown = true;
+        var lines = _currentLoadResult.Issues.Take(3)
+            .Select(i => $"{i.Path}: {i.Message}");
+        MessageBox.Show(
+            this,
+            "One or more saved reports could not be loaded:" + Environment.NewLine + string.Join(Environment.NewLine, lines),
+            "Report Load Warning",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+    }
+
+    private static void ApplyReadinessText(TextBlock target, string label, bool isReady, IReadOnlyList<string> issues, string notReadyText)
+    {
+        target.Text = isReady ? $"✓ {label}: Ready" : $"✖ {label}: {notReadyText}";
+        ToolTipService.SetToolTip(target, issues.Count == 0 ? null : string.Join(Environment.NewLine, issues));
+    }
+
     private void CreateNewReport()
     {
         var nextNumber = ProjectStore.SynchronizeNextReportNumber(_project);
@@ -194,7 +262,7 @@ public partial class ProjectWindow : Window
         };
         if (editor.ShowDialog() == true)
         {
-            RefreshReports();
+            RefreshDashboard();
         }
     }
 
@@ -214,7 +282,7 @@ public partial class ProjectWindow : Window
         };
         if (editor.ShowDialog() == true)
         {
-            RefreshReports();
+            RefreshDashboard();
         }
     }
 
@@ -260,37 +328,49 @@ public partial class ProjectWindow : Window
         };
         if (setup.ShowDialog() == true)
         {
-            RefreshProjectHeader();
-            UpdateReportSelectionState();
+            RefreshDashboard();
         }
     }
 
     private void ValidateProjectConfiguration()
     {
-        var errors = ProjectValidation.ValidateProject(_project);
-        if (errors.Count > 0)
+        var readiness = _dashboardSummary.Readiness;
+        if (readiness.IsReady)
         {
+            var message = "Project configuration is valid." + Environment.NewLine + Environment.NewLine +
+                          "Template: Ready" + Environment.NewLine +
+                          "Inspector Signature: Ready" + Environment.NewLine +
+                          "Project Manager Signature: Ready";
+
             MessageBox.Show(
                 this,
-                string.Join(Environment.NewLine, errors),
+                message,
                 "Project Validation",
                 MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                MessageBoxImage.Information);
             return;
         }
 
-        var message = "Project configuration is valid." + Environment.NewLine + Environment.NewLine +
-                      "Template: OK" + Environment.NewLine +
-                      "Inspector Signature: OK" + Environment.NewLine +
-                      "Project Manager Signature: OK" + Environment.NewLine +
-                      "Project Folder: OK";
+        var lines = new List<string>
+        {
+            readiness.TemplateReady ? "Template: Ready" : "Template: Attention",
+            readiness.InspectorSignatureReady ? "Inspector Signature: Ready" : "Inspector Signature: Missing/Invalid",
+            readiness.ProjectManagerSignatureReady ? "Project Manager Signature: Ready" : "Project Manager Signature: Missing/Invalid",
+            readiness.ProjectConfigurationReady ? "Project Configuration: Ready" : "Project Configuration: Attention"
+        };
+
+        if (readiness.Issues.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.AddRange(readiness.Issues);
+        }
 
         MessageBox.Show(
             this,
-            message,
+            string.Join(Environment.NewLine, lines),
             "Project Validation",
             MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            MessageBoxImage.Warning);
     }
 
     private void OpenReportsFolder()
@@ -363,5 +443,6 @@ public partial class ProjectWindow : Window
         public string FileName => string.IsNullOrWhiteSpace(Report.OutputFileName)
             ? ProjectLayout.DefaultReportFileName(Report.Number)
             : Report.OutputFileName;
+        public int PhotosCount => Report.Photos.Count;
     }
 }

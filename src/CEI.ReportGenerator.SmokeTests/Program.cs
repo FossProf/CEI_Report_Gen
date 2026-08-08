@@ -84,6 +84,126 @@ try
     Assert(startupPath is null, "startup reopen ignores missing path safely");
     Assert(settingsStore.Load().LastOpenedProjectPath is null, "missing startup reopen path is cleared safely");
 
+    Console.WriteLine("\n== Project readiness and dashboard ==");
+    var readinessTemplatePath = Path.Combine(root, "templates", "CEI_Base_Template_Refined.docx");
+    var readinessPhotoDir = Path.Combine(workspace, "readiness_photos");
+    Directory.CreateDirectory(readinessPhotoDir);
+    ExtractTemplateMedia(readinessTemplatePath, readinessPhotoDir);
+    var readinessPhotos = Directory.GetFiles(readinessPhotoDir).OrderBy(f => f).ToArray();
+    var readinessProjectFolder = Path.Combine(workspace, "readiness_project");
+    var readinessProject = ProjectStore.Create(
+        readinessProjectFolder,
+        "Dashboard Project",
+        "42",
+        "Owner",
+        "Manager",
+        "Builder",
+        readinessTemplatePath,
+        readinessPhotos[0],
+        readinessPhotos[1]);
+
+    var readyState = ProjectReadinessEvaluator.Evaluate(readinessProject);
+    Assert(readyState.IsReady, "fully valid project => readiness true");
+    Assert(readyState.Issues.Count == 0, "fully valid project => no readiness issues");
+
+    var missingTemplateProject = ProjectStore.Load(readinessProjectFolder)!;
+    missingTemplateProject.TemplatePath = Path.Combine(workspace, "missing-template.docx");
+    var missingTemplateReadiness = ProjectReadinessEvaluator.Evaluate(missingTemplateProject);
+    Assert(!missingTemplateReadiness.TemplateReady, "missing template => template readiness false");
+    Assert(missingTemplateReadiness.Issues.Any(i => i.Contains("template", StringComparison.OrdinalIgnoreCase)), "missing template => useful readiness issue");
+
+    var invalidTemplatePath = Path.Combine(workspace, "invalid_template.docx");
+    File.Copy(readinessTemplatePath, invalidTemplatePath);
+    using (var broken = WordprocessingDocument.Open(invalidTemplatePath, true))
+    {
+        var firstAlias = broken.MainDocumentPart!.Document.Body!
+            .Descendants<SdtElement>()
+            .First();
+        firstAlias.Remove();
+        broken.MainDocumentPart.Document.Save();
+    }
+
+    var invalidTemplateProject = ProjectStore.Load(readinessProjectFolder)!;
+    invalidTemplateProject.TemplatePath = invalidTemplatePath;
+    var invalidTemplateReadiness = ProjectReadinessEvaluator.Evaluate(invalidTemplateProject);
+    Assert(!invalidTemplateReadiness.TemplateReady, "invalid template => template readiness false");
+
+    var missingInspectorProject = ProjectStore.Load(readinessProjectFolder)!;
+    missingInspectorProject.InspectorSignaturePath = string.Empty;
+    var missingInspectorReadiness = ProjectReadinessEvaluator.Evaluate(missingInspectorProject);
+    Assert(!missingInspectorReadiness.InspectorSignatureReady, "missing inspector signature => readiness false");
+
+    var missingPmProject = ProjectStore.Load(readinessProjectFolder)!;
+    missingPmProject.ProjectManagerSignaturePath = string.Empty;
+    var missingPmReadiness = ProjectReadinessEvaluator.Evaluate(missingPmProject);
+    Assert(!missingPmReadiness.ProjectManagerSignatureReady, "missing PM signature => readiness false");
+
+    var invalidConfigProject = ProjectStore.Load(readinessProjectFolder)!;
+    invalidConfigProject.Name = string.Empty;
+    var invalidConfigReadiness = ProjectReadinessEvaluator.Evaluate(invalidConfigProject);
+    Assert(!invalidConfigReadiness.ProjectConfigurationReady, "invalid project config => readiness false");
+    Assert(invalidConfigReadiness.Issues.Any(i => i.Contains("required", StringComparison.OrdinalIgnoreCase)), "readiness issues contain useful descriptions");
+
+    var emptyLoadResult = ReportStore.LoadAllReports(readinessProject);
+    var emptySummary = ProjectDashboardSummaryBuilder.Build(readinessProject, emptyLoadResult);
+    Assert(emptySummary.TotalReports == 0, "report counts: zero reports");
+    Assert(emptySummary.FinalReports == 0, "report counts: zero final");
+    Assert(emptySummary.DraftReports == 0, "report counts: zero draft");
+    Assert(emptySummary.NextReportNumber == 1, "next report display uses authoritative next number for empty project");
+
+    var draftOnlyProject = ProjectStore.Create(
+        Path.Combine(workspace, "dashboard_draft_only"),
+        "Draft Only",
+        "51",
+        "Owner",
+        "CM",
+        "GC",
+        readinessTemplatePath,
+        readinessPhotos[0],
+        readinessPhotos[1]);
+    var draftOnlyReport = MakeReport(draftOnlyProject, 1, 1, "Sunny", readinessPhotos);
+    ReportStore.SaveReport(draftOnlyProject, draftOnlyReport);
+    var draftSummary = ProjectDashboardSummaryBuilder.Build(draftOnlyProject, ReportStore.LoadAllReports(draftOnlyProject));
+    Assert(draftSummary.TotalReports == 1 && draftSummary.DraftReports == 1 && draftSummary.FinalReports == 0, "report counts: draft-only");
+
+    var finalOnlyProject = ProjectStore.Create(
+        Path.Combine(workspace, "dashboard_final_only"),
+        "Final Only",
+        "52",
+        "Owner",
+        "CM",
+        "GC",
+        readinessTemplatePath,
+        readinessPhotos[0],
+        readinessPhotos[1]);
+    var finalOnlyReport = MakeReport(finalOnlyProject, 1, 0, "Sunny", readinessPhotos);
+    var finalOnlyPreview = ReportGenerator.GenerateDraft(finalOnlyProject, finalOnlyReport);
+    ReportGenerator.FinalizeReport(finalOnlyProject, finalOnlyReport, finalOnlyPreview.OutputPath);
+    var finalSummary = ProjectDashboardSummaryBuilder.Build(finalOnlyProject, ReportStore.LoadAllReports(finalOnlyProject));
+    Assert(finalSummary.TotalReports == 1 && finalSummary.FinalReports == 1 && finalSummary.DraftReports == 0, "report counts: final-only");
+
+    var mixedProject = ProjectStore.Create(
+        Path.Combine(workspace, "dashboard_mixed"),
+        "Mixed",
+        "53",
+        "Owner",
+        "CM",
+        "GC",
+        readinessTemplatePath,
+        readinessPhotos[0],
+        readinessPhotos[1]);
+    var mixedDraft = MakeReport(mixedProject, 1, 0, "Sunny", readinessPhotos);
+    ReportStore.SaveReport(mixedProject, mixedDraft);
+    var mixedFinal = MakeReport(mixedProject, 2, 0, "Sunny", readinessPhotos);
+    var mixedPreview = ReportGenerator.GenerateDraft(mixedProject, mixedFinal);
+    ReportGenerator.FinalizeReport(mixedProject, mixedFinal, mixedPreview.OutputPath);
+    var mixedSummary = ProjectDashboardSummaryBuilder.Build(mixedProject, ReportStore.LoadAllReports(mixedProject));
+    Assert(mixedSummary.TotalReports == 2 && mixedSummary.FinalReports == 1 && mixedSummary.DraftReports == 1, "report counts: mixed");
+
+    mixedProject.NextReportNumber = 1;
+    var authoritativeSummary = ProjectDashboardSummaryBuilder.Build(mixedProject, ReportStore.LoadAllReports(mixedProject));
+    Assert(authoritativeSummary.NextReportNumber == ReportStore.GetNextReportNumber(mixedProject), "next report display uses authoritative next-number logic");
+
     // Baseline Regression Tests
     // These checks define the v0.1 foundation contract and should not be removed.
     var photoDir = Path.Combine(workspace, "sample_photos");
