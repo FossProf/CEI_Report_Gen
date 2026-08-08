@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using CEI.ReportGenerator.App;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
+using ProjectValidation = CEI.ReportGenerator.Core.Services.Validation;
 
 namespace CEI.ReportGenerator.App.Views;
 
@@ -17,10 +20,17 @@ public partial class ProjectWindow : Window
     {
         InitializeComponent();
         _project = project;
-        ProjectTitle.Text = project.Name;
-        ProjectDetails.Text =
-            $"#{project.Number}  •  Owner: {project.Owner}  •  Contract Manager: {project.ContractManager}  •  General Contractor: {project.GeneralContractor}";
+        RefreshProjectHeader();
         RefreshReports();
+        UpdateReportSelectionState();
+    }
+
+    private void RefreshProjectHeader()
+    {
+        ProjectTitle.Text = _project.Name;
+        ProjectDetails.Text =
+            $"#{_project.Number}  •  Owner: {_project.Owner}  •  Contract Manager: {_project.ContractManager}  •  General Contractor: {_project.GeneralContractor}";
+        Title = $"{_project.Name} - CEI Report Generator";
     }
 
     private void RefreshReports()
@@ -28,7 +38,8 @@ public partial class ProjectWindow : Window
         var loadResult = ReportStore.LoadAllReports(_project);
         ReportsGrid.ItemsSource = loadResult.Reports
             .OrderByDescending(r => r.Number)
-            .Select(r => new ReportListItem(r)).ToList();
+            .Select(r => new ReportListItem(r))
+            .ToList();
 
         if (loadResult.Issues.Count > 0 && !_reportLoadWarningShown)
         {
@@ -42,22 +53,34 @@ public partial class ProjectWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
+
+        UpdateReportSelectionState();
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.N)
+        {
+            CreateNewReport();
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.S)
+        {
+            OpenProjectSettings();
+            e.Handled = true;
+        }
+    }
+
+    private void ReportsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateReportSelectionState();
     }
 
     private void NewReportButton_Click(object sender, RoutedEventArgs e)
     {
-        var nextNumber = ProjectStore.SynchronizeNextReportNumber(_project);
-        var report = new InspectionReport
-        {
-            Number = nextNumber,
-            Date = DateTime.Today
-        };
-        var editor = new ReportEditorWindow(_project, report, isNew: true);
-        editor.Owner = this;
-        if (editor.ShowDialog() == true)
-        {
-            RefreshReports();
-        }
+        CreateNewReport();
     }
 
     private void OpenReportButton_Click(object sender, RoutedEventArgs e)
@@ -70,49 +93,222 @@ public partial class ProjectWindow : Window
         OpenSelectedReport();
     }
 
-    private void OpenSelectedReport()
+    private void ReportFolderButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ReportsGrid.SelectedItem is not ReportListItem item)
-        {
-            return;
-        }
+        OpenSelectedReportFolder();
+    }
 
-        var editor = new ReportEditorWindow(_project, item.Report, isNew: false);
-        editor.Owner = this;
+    private void EditProjectButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenProjectSettings();
+    }
+
+    private void ProjectFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenProjectFolder();
+    }
+
+    private void NewReportMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        CreateNewReport();
+    }
+
+    private void OpenProjectFolderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenProjectFolder();
+    }
+
+    private void CloseProjectMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        CloseProject();
+    }
+
+    private void ExitMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        Application.Current.Shutdown();
+    }
+
+    private void ProjectSettingsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenProjectSettings();
+    }
+
+    private void ValidateProjectMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        ValidateProjectConfiguration();
+    }
+
+    private void OpenReportsFolderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenReportsFolder();
+    }
+
+    private void OpenSignaturesFolderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSignaturesFolder();
+    }
+
+    private void OpenSelectedReportMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSelectedReport();
+    }
+
+    private void OpenSelectedReportFolderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSelectedReportFolder();
+    }
+
+    private void AboutMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            this,
+            AppInfo.GetAboutText(),
+            "About",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void CreateNewReport()
+    {
+        var nextNumber = ProjectStore.SynchronizeNextReportNumber(_project);
+        var report = new InspectionReport
+        {
+            Number = nextNumber,
+            Date = DateTime.Today
+        };
+
+        var editor = new ReportEditorWindow(_project, report, isNew: true)
+        {
+            Owner = this
+        };
         if (editor.ShowDialog() == true)
         {
             RefreshReports();
         }
     }
 
-    private void ReportFolderButton_Click(object sender, RoutedEventArgs e)
+    private ReportListItem? GetSelectedReportItem()
+        => ReportsGrid.SelectedItem as ReportListItem;
+
+    private void OpenSelectedReport()
     {
-        if (ReportsGrid.SelectedItem is not ReportListItem item)
+        if (GetSelectedReportItem() is not { } item)
         {
             return;
         }
 
+        var editor = new ReportEditorWindow(_project, item.Report, isNew: false)
+        {
+            Owner = this
+        };
+        if (editor.ShowDialog() == true)
+        {
+            RefreshReports();
+        }
+    }
+
+    private void OpenSelectedReportFolder()
+    {
+        if (GetSelectedReportItem() is not { } item)
+        {
+            MessageBox.Show(
+                this,
+                "Select a report first.",
+                "Open Report Folder",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
         var folder = ProjectLayout.ReportFolder(_project, item.Report.Number);
-        Directory.CreateDirectory(folder);
+        if (!Directory.Exists(folder))
+        {
+            MessageBox.Show(
+                this,
+                "The selected report folder does not exist yet.",
+                "Open Report Folder",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
         OpenInExplorer(folder);
     }
 
-    private void ProjectFolderButton_Click(object sender, RoutedEventArgs e)
+    private void OpenProjectFolder()
     {
         Directory.CreateDirectory(_project.FolderPath);
         OpenInExplorer(_project.FolderPath);
     }
 
-    private void EditProjectButton_Click(object sender, RoutedEventArgs e)
+    private void OpenProjectSettings()
     {
-        var setup = new ProjectSetupWindow(_project);
-        setup.Owner = this;
+        var setup = new ProjectSetupWindow(_project)
+        {
+            Owner = this
+        };
         if (setup.ShowDialog() == true)
         {
-            ProjectTitle.Text = _project.Name;
-            ProjectDetails.Text =
-                $"#{_project.Number}  •  Owner: {_project.Owner}  •  Contract Manager: {_project.ContractManager}  •  General Contractor: {_project.GeneralContractor}";
+            RefreshProjectHeader();
+            UpdateReportSelectionState();
         }
+    }
+
+    private void ValidateProjectConfiguration()
+    {
+        var errors = ProjectValidation.ValidateProject(_project);
+        if (errors.Count > 0)
+        {
+            MessageBox.Show(
+                this,
+                string.Join(Environment.NewLine, errors),
+                "Project Validation",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var message = "Project configuration is valid." + Environment.NewLine + Environment.NewLine +
+                      "Template: OK" + Environment.NewLine +
+                      "Inspector Signature: OK" + Environment.NewLine +
+                      "Project Manager Signature: OK" + Environment.NewLine +
+                      "Project Folder: OK";
+
+        MessageBox.Show(
+            this,
+            message,
+            "Project Validation",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void OpenReportsFolder()
+    {
+        var folder = ProjectLayout.ReportsFolder(_project);
+        Directory.CreateDirectory(folder);
+        OpenInExplorer(folder);
+    }
+
+    private void OpenSignaturesFolder()
+    {
+        var folder = ProjectLayout.SignaturesFolder(_project);
+        Directory.CreateDirectory(folder);
+        OpenInExplorer(folder);
+    }
+
+    private void UpdateReportSelectionState()
+    {
+        var hasSelection = GetSelectedReportItem() is not null;
+        OpenReportButton.IsEnabled = hasSelection;
+        ReportFolderButton.IsEnabled = hasSelection;
+        OpenSelectedReportMenuItem.IsEnabled = hasSelection;
+        OpenSelectedReportFolderMenuItem.IsEnabled = hasSelection;
+    }
+
+    private void CloseProject()
+    {
+        Owner?.Activate();
+        Close();
     }
 
     private static void OpenInExplorer(string path)
@@ -127,8 +323,11 @@ public partial class ProjectWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not open the folder.\n{ex.Message}", "Open Folder",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(
+                $"Could not open the folder.{Environment.NewLine}{ex.Message}",
+                "Open Folder",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
     }
 

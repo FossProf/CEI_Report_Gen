@@ -3,50 +3,79 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Project"
         Height="560" Width="780"
-        WindowStartupLocation="CenterOwner">
-    <Grid Margin="16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+        WindowStartupLocation="CenterOwner"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_New Report" InputGestureText="Ctrl+N" Click="NewReportMenuItem_Click"/>
+                <Separator/>
+                <MenuItem Header="Open Project _Folder" Click="OpenProjectFolderMenuItem_Click"/>
+                <MenuItem Header="_Close Project" Click="CloseProjectMenuItem_Click"/>
+                <Separator/>
+                <MenuItem Header="E_xit" Click="ExitMenuItem_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Project">
+                <MenuItem Header="Project _Settings..." InputGestureText="Ctrl+Shift+S" Click="ProjectSettingsMenuItem_Click"/>
+                <MenuItem Header="_Validate Project" Click="ValidateProjectMenuItem_Click"/>
+                <Separator/>
+                <MenuItem Header="Open _Reports Folder" Click="OpenReportsFolderMenuItem_Click"/>
+                <MenuItem Header="Open S_ignatures Folder" Click="OpenSignaturesFolderMenuItem_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Report">
+                <MenuItem x:Name="OpenSelectedReportMenuItem" Header="_Open Selected Report" Click="OpenSelectedReportMenuItem_Click"/>
+                <MenuItem x:Name="OpenSelectedReportFolderMenuItem" Header="Open Selected Report _Folder" Click="OpenSelectedReportFolderMenuItem_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About" Click="AboutMenuItem_Click"/>
+            </MenuItem>
+        </Menu>
 
-        <TextBlock x:Name="ProjectTitle" Grid.Row="0" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
-        <TextBlock x:Name="ProjectDetails" Grid.Row="1" Foreground="#666666" TextWrapping="Wrap" Margin="0,4,0,12"/>
+        <Grid Margin="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="Inspection Reports" FontWeight="SemiBold" Margin="10,8,10,4"/>
-                <DataGrid x:Name="ReportsGrid" Grid.Row="1" Margin="6,0,6,6"
-                          IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
-                          SelectionMode="Single" HeadersVisibility="Column"
-                          MouseDoubleClick="ReportsGrid_MouseDoubleClick">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="Report #" Binding="{Binding Number}" Width="90"/>
-                        <DataGridTextColumn Header="Date" Binding="{Binding DateText}" Width="120"/>
-                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
-                        <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*"/>
-                    </DataGrid.Columns>
-                </DataGrid>
-            </Grid>
-        </Border>
+            <TextBlock x:Name="ProjectTitle" Grid.Row="0" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            <TextBlock x:Name="ProjectDetails" Grid.Row="1" Foreground="#666666" TextWrapping="Wrap" Margin="0,4,0,12"/>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button x:Name="OpenReportButton" Content="Open Report" Width="110" Margin="0,0,8,0" Padding="8,5"
-                    Click="OpenReportButton_Click"/>
-            <Button x:Name="ReportFolderButton" Content="Report Folder" Width="110" Margin="0,0,8,0" Padding="8,5"
-                    Click="ReportFolderButton_Click"/>
-            <Button x:Name="EditProjectButton" Content="Edit Project" Width="105" Margin="0,0,8,0" Padding="8,5"
-                    Click="EditProjectButton_Click"/>
-            <Button Content="Project Folder" Width="110" Margin="0,0,8,0" Padding="8,5"
-                    Click="ProjectFolderButton_Click"/>
-            <Button x:Name="NewReportButton" Content="New Report" Width="110" Padding="8,5"
-                    Click="NewReportButton_Click"/>
-        </StackPanel>
-    </Grid>
+            <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="Inspection Reports" FontWeight="SemiBold" Margin="10,8,10,4"/>
+                    <DataGrid x:Name="ReportsGrid" Grid.Row="1" Margin="6,0,6,6"
+                              IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
+                              SelectionMode="Single" HeadersVisibility="Column"
+                              MouseDoubleClick="ReportsGrid_MouseDoubleClick"
+                              SelectionChanged="ReportsGrid_SelectionChanged">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Report #" Binding="{Binding Number}" Width="90"/>
+                            <DataGridTextColumn Header="Date" Binding="{Binding DateText}" Width="120"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+                            <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                <Button x:Name="OpenReportButton" Content="Open Report" Width="110" Margin="0,0,8,0" Padding="8,5"
+                        Click="OpenReportButton_Click"/>
+                <Button x:Name="ReportFolderButton" Content="Report Folder" Width="110" Margin="0,0,8,0" Padding="8,5"
+                        Click="ReportFolderButton_Click"/>
+                <Button x:Name="EditProjectButton" Content="Edit Project" Width="105" Margin="0,0,8,0" Padding="8,5"
+                        Click="EditProjectButton_Click"/>
+                <Button x:Name="ProjectFolderButton" Content="Project Folder" Width="110" Margin="0,0,8,0" Padding="8,5"
+                        Click="ProjectFolderButton_Click"/>
+                <Button x:Name="NewReportButton" Content="New Report" Width="110" Padding="8,5"
+                        Click="NewReportButton_Click"/>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
 </Window>
