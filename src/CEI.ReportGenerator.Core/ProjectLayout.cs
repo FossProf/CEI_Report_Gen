@@ -39,6 +39,11 @@ public static class ProjectLayout
     public static string FinalReportPath(Project project, int reportNumber)
         => Path.Combine(ReportFolder(project, reportNumber), DefaultReportFileName(reportNumber));
 
+    public static string FinalizingReportPath(Project project, int reportNumber)
+        => Path.Combine(
+            ReportFolder(project, reportNumber),
+            $".{DefaultReportFileName(reportNumber)}.{Guid.NewGuid():N}.finalizing.docx");
+
     public static string SignaturesFolder(Project project)
         => Path.Combine(project.FolderPath, SignaturesFolderName);
 

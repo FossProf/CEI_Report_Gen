@@ -28,7 +28,12 @@ public static class RecentProjectStore
 
     public static List<RecentProjectEntry> Load()
     {
-        var entries = JsonStore.Load<List<RecentProjectEntry>>(FilePath) ?? new List<RecentProjectEntry>();
+        if (!JsonStore.TryLoad<List<RecentProjectEntry>>(FilePath, out var loaded, out _))
+        {
+            return new List<RecentProjectEntry>();
+        }
+
+        var entries = loaded ?? new List<RecentProjectEntry>();
         var valid = entries
             .Where(e => ProjectLayout.IsValidProjectFolder(e.FolderPath))
             .OrderByDescending(e => e.LastOpenedUtc)

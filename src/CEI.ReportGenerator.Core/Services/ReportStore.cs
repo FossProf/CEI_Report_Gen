@@ -4,6 +4,12 @@ namespace CEI.ReportGenerator.Core.Services;
 
 public static class ReportStore
 {
+    public sealed record ReportLoadIssue(string Path, string Message);
+
+    public sealed record ReportLoadResult(
+        IReadOnlyList<InspectionReport> Reports,
+        IReadOnlyList<ReportLoadIssue> Issues);
+
     public static void SaveReport(Project project, InspectionReport report)
     {
         var folder = ProjectLayout.ReportFolder(project, report.Number);
@@ -141,6 +147,18 @@ public static class ReportStore
         return Math.Max(project.NextReportNumber, highest + 1);
     }
 
+    public static int SynchronizeNextReportNumber(Project project)
+    {
+        var nextNumber = GetNextReportNumber(project);
+        if (project.NextReportNumber != nextNumber)
+        {
+            project.NextReportNumber = nextNumber;
+            ProjectStore.Save(project);
+        }
+
+        return nextNumber;
+    }
+
     public static bool ReportNumberExists(Project project, int reportNumber)
     {
         var folder = ProjectLayout.ReportFolder(project, reportNumber);
@@ -179,21 +197,27 @@ public static class ReportStore
         return occupied;
     }
 
-    public static List<InspectionReport> LoadAllReports(Project project)
+    public static ReportLoadResult LoadAllReports(Project project)
     {
         var reportsFolder = ProjectLayout.ReportsFolder(project);
         if (!Directory.Exists(reportsFolder))
         {
-            return new List<InspectionReport>();
+            return new ReportLoadResult(Array.Empty<InspectionReport>(), Array.Empty<ReportLoadIssue>());
         }
 
         var reports = new List<InspectionReport>();
+        var issues = new List<ReportLoadIssue>();
         foreach (var dir in Directory.EnumerateDirectories(reportsFolder).OrderBy(d => d))
         {
             var json = Path.Combine(dir, "report.json");
             if (File.Exists(json))
             {
-                var report = JsonStore.Load<InspectionReport>(json);
+                if (!JsonStore.TryLoad<InspectionReport>(json, out var report, out var error))
+                {
+                    issues.Add(new ReportLoadIssue(json, error ?? "Unknown load error."));
+                    continue;
+                }
+
                 if (report is not null)
                 {
                     reports.Add(report);
@@ -201,11 +225,17 @@ public static class ReportStore
             }
         }
 
-        return reports;
+        return new ReportLoadResult(reports, issues);
     }
 
     public static string StoredPhotoPath(Project project, InspectionReport report, Photo photo)
-        => Path.Combine(ProjectLayout.ReportPhotosFolder(project, report.Number), photo.StoredFileName);
+    {
+        var photosFolder = ProjectLayout.ReportPhotosFolder(project, report.Number);
+        var fileName = ValidateStoredFileName(photo.StoredFileName);
+        var storedPath = Path.Combine(photosFolder, fileName);
+        EnsureWithinFolder(photosFolder, storedPath);
+        return storedPath;
+    }
 
     public static string ResolvePhotoSourcePath(Project project, InspectionReport report, Photo photo)
     {
@@ -214,19 +244,30 @@ public static class ReportStore
             return photo.SourcePath;
         }
 
-        var stored = StoredPhotoPath(project, report, photo);
-        return File.Exists(stored) ? stored : string.Empty;
+        try
+        {
+            var stored = StoredPhotoPath(project, report, photo);
+            return File.Exists(stored) ? stored : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
-    public static void CleanupPreviewArtifacts(Project project, int reportNumber)
+    public static void CleanupPreviewArtifacts(Project project, int reportNumber, bool removePreview = true)
     {
         var previewPath = ProjectLayout.ReportPreviewPath(project, reportNumber);
-        if (File.Exists(previewPath))
+        if (removePreview && File.Exists(previewPath))
         {
             File.Delete(previewPath);
         }
 
         var workingFolder = ProjectLayout.ReportWorkingFolder(project, reportNumber);
+        DeleteMatchingFiles(workingFolder, "*.tmp.docx");
+        DeleteMatchingFiles(workingFolder, "*.finalizing.docx");
+        DeleteMatchingFiles(ProjectLayout.ReportFolder(project, reportNumber), "*.finalizing.docx");
+
         if (Directory.Exists(workingFolder) && !Directory.EnumerateFileSystemEntries(workingFolder).Any())
         {
             Directory.Delete(workingFolder);
@@ -255,6 +296,19 @@ public static class ReportStore
         if (!normalizedPath.StartsWith(normalizedFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Stored photo path escapes the report photos folder.");
+        }
+    }
+
+    private static void DeleteMatchingFiles(string folder, string pattern)
+    {
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(folder, pattern, SearchOption.TopDirectoryOnly))
+        {
+            File.Delete(file);
         }
     }
 }

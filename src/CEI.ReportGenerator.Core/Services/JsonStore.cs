@@ -36,4 +36,27 @@ public static class JsonStore
         var json = File.ReadAllText(path);
         return JsonSerializer.Deserialize<T>(json, Options);
     }
+
+    public static bool TryLoad<T>(string path, out T? value, out string? error)
+    {
+        value = default;
+        error = null;
+
+        if (!File.Exists(path))
+        {
+            return true;
+        }
+
+        try
+        {
+            value = Load<T>(path);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            value = default;
+            return false;
+        }
+    }
 }

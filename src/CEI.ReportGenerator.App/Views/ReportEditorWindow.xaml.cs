@@ -58,6 +58,13 @@ public partial class ReportEditorWindow : Window
 
         UpdatePhotoNumbers();
         UpdatePhotoButtons();
+
+        if (report.Status == ReportStatus.Final)
+        {
+            SaveDraftButton.IsEnabled = false;
+            GenerateButton.IsEnabled = false;
+            ReportNumberBox.IsEnabled = false;
+        }
     }
 
     private static readonly string[] PhotoExtensions = { ".png", ".jpg", ".jpeg", ".gif", ".bmp" };

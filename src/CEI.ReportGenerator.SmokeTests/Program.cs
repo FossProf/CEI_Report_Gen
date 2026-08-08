@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using CEI.ReportGenerator.Core;
@@ -89,6 +90,25 @@ try
     Assert(reloadedProject is not null, "project reloaded");
     Assert(reloadedProject!.InspectorSignaturePath == project.InspectorSignaturePath, "relative signature path survives reload");
     Assert(reloadedProject.NextReportNumber == 1, "next report number still 1 (nothing finalized)");
+
+    Console.WriteLine("\n== Next report number synchronization ==");
+    var syncProject = ProjectStore.Load(projectFolder)!;
+    syncProject.NextReportNumber = 2;
+    ProjectStore.Save(syncProject);
+    Directory.CreateDirectory(ProjectLayout.ReportFolder(syncProject, 2));
+    File.WriteAllText(ProjectLayout.ReportFilePath(syncProject, 2), "{}");
+    Directory.CreateDirectory(ProjectLayout.ReportFolder(syncProject, 3));
+    File.WriteAllText(ProjectLayout.ReportFilePath(syncProject, 3), "{}");
+    Assert(ProjectStore.SynchronizeNextReportNumber(syncProject) == 4, "stale next report self-corrects to 4");
+    var syncReloaded = ProjectStore.Load(projectFolder)!;
+    Assert(syncReloaded.NextReportNumber == 4, "synchronized next report persists");
+    syncReloaded.NextReportNumber = 8;
+    ProjectStore.Save(syncReloaded);
+    Assert(ProjectStore.SynchronizeNextReportNumber(syncReloaded) == 8, "higher stored next report remains authoritative");
+    Directory.Delete(ProjectLayout.ReportFolder(syncReloaded, 2), recursive: true);
+    Directory.Delete(ProjectLayout.ReportFolder(syncReloaded, 3), recursive: true);
+    syncReloaded.NextReportNumber = 1;
+    ProjectStore.Save(syncReloaded);
 
     Console.WriteLine("\n== Signature UI flow (project-relative dropdown paths) ==");
     var uiProjectFolder = Path.Combine(workspace, "projects", "UI Flow Project");
@@ -301,7 +321,41 @@ try
     Console.WriteLine($"  Report {savedReport.Number} status: {savedReport.Status}, photos: {savedReport.Photos.Count}");
 
     var allReports = ReportStore.LoadAllReports(finalProject);
-    Assert(allReports.Count == 1, "one report.json listed in project (only the finalized report was saved)");
+    Assert(allReports.Reports.Count == 1, "one report.json listed in project (only the finalized report was saved)");
+
+    Console.WriteLine("\n== Final DOCX collision never overwrites ==");
+    var collisionProject = ProjectStore.Create(
+        Path.Combine(workspace, "collision_project"), "Collision", "13", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var collisionReport = MakeReport(collisionProject, 1, 1, "Sunny", photoFiles);
+    var collisionPreview = ReportGenerator.GenerateDraft(collisionProject, collisionReport);
+    var collisionFinalPath = ProjectLayout.FinalReportPath(collisionProject, 1);
+    Directory.CreateDirectory(Path.GetDirectoryName(collisionFinalPath)!);
+    File.WriteAllText(collisionFinalPath, "existing final report");
+    var beforeHash = FileHash(collisionFinalPath);
+    ExpectActionFailure(
+        () => ReportGenerator.FinalizeReport(collisionProject, collisionReport, collisionPreview.OutputPath),
+        message => message.Contains("already exists", StringComparison.OrdinalIgnoreCase));
+    Assert(FileHash(collisionFinalPath) == beforeHash, "existing final report remains unchanged after collision");
+    Assert(File.Exists(collisionPreview.OutputPath), "preview still exists after failed finalization");
+
+    Console.WriteLine("\n== Foreign report ownership blocks finalization ==");
+    var foreignProject = ProjectStore.Create(
+        Path.Combine(workspace, "foreign_project"), "Foreign", "14", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var foreignSaved = MakeReport(foreignProject, 1, 1, "Sunny", photoFiles);
+    ReportStore.SaveReport(foreignProject, foreignSaved);
+    var foreignAttempt = MakeReport(foreignProject, 1, 1, "Sunny", photoFiles);
+    var foreignPreview = ReportGenerator.GenerateDraft(foreignProject, foreignAttempt);
+    ExpectActionFailure(
+        () => ReportGenerator.FinalizeReport(foreignProject, foreignAttempt, foreignPreview.OutputPath),
+        message => message.Contains("already assigned", StringComparison.OrdinalIgnoreCase));
+    Assert(File.Exists(foreignPreview.OutputPath), "preview preserved after foreign ownership failure");
+
+    Console.WriteLine("\n== Final report cannot be finalized again ==");
+    ExpectActionFailure(
+        () => ReportGenerator.FinalizeReport(project, finalizeReport, finalReportPath),
+        message => message.Contains("already final", StringComparison.OrdinalIgnoreCase));
 
     Console.WriteLine("\n== Manual report number override advances correctly ==");
     var manualProject = ProjectStore.Create(
@@ -320,6 +374,50 @@ try
     ReportGenerator.FinalizeReport(manualReloaded, manualReport3, manualPreview3.OutputPath);
     var manualReloadedAgain = ProjectStore.Load(manualProject.FolderPath)!;
     Assert(manualReloadedAgain.NextReportNumber == 6, "Next = 6, finalize 3 -> Next remains 6");
+
+    Console.WriteLine("\n== Finalization rollback preserves preview and state ==");
+    var rollbackProject = ProjectStore.Create(
+        Path.Combine(workspace, "rollback_project"), "Rollback", "55", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var rollbackReport = MakeReport(rollbackProject, 1, 1, "Sunny", photoFiles);
+    var rollbackPreview = ReportGenerator.GenerateDraft(rollbackProject, rollbackReport);
+    var rollbackPreviewPath = rollbackPreview.OutputPath;
+    ReportGenerator.SaveFailureHookForTesting = path =>
+        path.EndsWith(ProjectLayout.ProjectFileName, StringComparison.OrdinalIgnoreCase)
+            ? new IOException("Injected project save failure.")
+            : null;
+    try
+    {
+        ExpectActionFailure(
+            () => ReportGenerator.FinalizeReport(rollbackProject, rollbackReport, rollbackPreviewPath),
+            message => message.Contains("Injected project save failure.", StringComparison.OrdinalIgnoreCase));
+    }
+    finally
+    {
+        ReportGenerator.SaveFailureHookForTesting = null;
+    }
+
+    Assert(File.Exists(rollbackPreviewPath), "preview still exists after rollback-triggering finalization failure");
+    Assert(!File.Exists(ProjectLayout.FinalReportPath(rollbackProject, 1)), "final report not promoted after rollback failure");
+    Assert(!Directory.EnumerateFiles(ProjectLayout.ReportFolder(rollbackProject, 1), "*.finalizing.docx", SearchOption.TopDirectoryOnly).Any(),
+        "no finalizing artifacts remain after rollback");
+    Assert(rollbackProject.NextReportNumber == 1, "in-memory next report restored after rollback");
+    var rollbackLoadedReport = ReportStore.LoadReport(rollbackProject, 1);
+    Assert(rollbackLoadedReport is null || rollbackLoadedReport.Status != ReportStatus.Final, "report.json not left finalized after rollback");
+
+    Console.WriteLine("\n== Malformed report.json does not block valid reports ==");
+    var malformedProject = ProjectStore.Create(
+        Path.Combine(workspace, "malformed_project"), "Malformed", "19", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    ReportStore.SaveReport(malformedProject, MakeReport(malformedProject, 1, 0, "Sunny", photoFiles));
+    Directory.CreateDirectory(ProjectLayout.ReportFolder(malformedProject, 2));
+    File.WriteAllText(ProjectLayout.ReportFilePath(malformedProject, 2), "{ invalid json");
+    ReportStore.SaveReport(malformedProject, MakeReport(malformedProject, 3, 0, "Sunny", photoFiles));
+    var malformedResult = ReportStore.LoadAllReports(malformedProject);
+    Assert(malformedResult.Reports.Count == 2, "valid reports still load when one report.json is malformed");
+    Assert(malformedResult.Issues.Count == 1, "malformed report is surfaced as one load issue");
+    Assert(malformedResult.Issues[0].Path.EndsWith(Path.Combine("0002", "report.json"), StringComparison.OrdinalIgnoreCase),
+        "load issue identifies malformed report path");
 
     Console.WriteLine("\n== Project remains portable after directory move ==");
     var portableCreatedFolder = Path.Combine(workspace, "portable_created");
@@ -344,6 +442,37 @@ try
     ExpectActionFailure(
         () => ReportStore.SaveReport(photoSafetyProject, photoSafetyReport),
         message => message.Contains("file names only", StringComparison.OrdinalIgnoreCase));
+    var readTraversalReport = MakeReport(photoSafetyProject, 2, 1, "Sunny", photoFiles);
+    readTraversalReport.Photos[0].StoredFileName = @"..\outside.jpg";
+    readTraversalReport.Photos[0].SourcePath = string.Empty;
+    Assert(ReportStore.ResolvePhotoSourcePath(photoSafetyProject, readTraversalReport, readTraversalReport.Photos[0]) == string.Empty,
+        "stored photo filename traversal is rejected on read");
+    readTraversalReport.Photos[0].StoredFileName = @"C:\outside.jpg";
+    Assert(ReportStore.ResolvePhotoSourcePath(photoSafetyProject, readTraversalReport, readTraversalReport.Photos[0]) == string.Empty,
+        "absolute stored photo path is rejected on read");
+
+    Console.WriteLine("\n== Failed project update leaves live and persisted state unchanged ==");
+    var updateProject = ProjectStore.Create(
+        Path.Combine(workspace, "update_project"), "Original", "21", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var beforeUpdateJson = File.ReadAllBytes(updateProject.FilePath);
+    var beforeUpdateTemplateHash = FileHash(updateProject.TemplatePath);
+    ExpectActionFailure(
+        () => ProjectStore.Update(
+            updateProject,
+            "Changed",
+            "22",
+            "New Owner",
+            "New CM",
+            "New GC",
+            templatePath,
+            updateProject.InspectorSignaturePath,
+            "Signatures/not-a-real-signature.txt"),
+        message => message.Contains("signature image", StringComparison.OrdinalIgnoreCase) || message.Contains("supported", StringComparison.OrdinalIgnoreCase));
+    Assert(updateProject.Name == "Original", "live project name unchanged after failed update");
+    Assert(updateProject.Number == "21", "live project number unchanged after failed update");
+    Assert(FileHash(updateProject.TemplatePath) == beforeUpdateTemplateHash, "existing template remains intact after failed update");
+    Assert(File.ReadAllBytes(updateProject.FilePath).SequenceEqual(beforeUpdateJson), "project.json unchanged after failed update");
 
     Console.WriteLine("\n== Identical photo content stored once (dedupe) ==");
     var dedupeProject = ProjectStore.Create(
@@ -361,6 +490,22 @@ try
         "distinct photos keep distinct stored files");
     Assert(dedupeReport.Photos[0].StoredFileName == "image1.png", "stored photo keeps original file name");
     Console.WriteLine("    ok: identical content deduped, distinct content preserved with original names");
+
+    Console.WriteLine("\n== Repository hygiene rules present ==");
+    var gitIgnore = File.ReadAllText(Path.Combine(root, ".gitignore"));
+    Assert(gitIgnore.Contains("projects/*", StringComparison.Ordinal), "projects runtime data ignored");
+    Assert(gitIgnore.Contains("Signatures/*", StringComparison.Ordinal), "signature library ignored");
+    Assert(gitIgnore.Contains("generation-error.log", StringComparison.Ordinal), "generation logs ignored");
+    Assert(gitIgnore.Contains("*.tmp.docx", StringComparison.Ordinal), "temporary docx files ignored");
+    var trackedFiles = GitTrackedFiles(root);
+    Assert(!trackedFiles.Any(p => p.StartsWith("projects/", StringComparison.OrdinalIgnoreCase) && p != "projects/.gitkeep"),
+        "no runtime project content is tracked");
+    Assert(!trackedFiles.Any(p => p.StartsWith("Signatures/", StringComparison.OrdinalIgnoreCase) && p != "Signatures/.gitkeep"),
+        "no real signatures are tracked");
+    Assert(!trackedFiles.Any(p => p.EndsWith("generation-error.log", StringComparison.OrdinalIgnoreCase)),
+        "no generation logs are tracked");
+    Assert(!trackedFiles.Any(p => p.EndsWith(".tmp.docx", StringComparison.OrdinalIgnoreCase) || p.EndsWith(".finalizing.docx", StringComparison.OrdinalIgnoreCase)),
+        "no temp or finalizing docx files are tracked");
 
     Console.WriteLine("\nALL SMOKE TESTS PASSED");
     return 0;
@@ -622,6 +767,42 @@ static void CopyDirectory(string source, string destination)
         Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
         File.Copy(file, targetFile, overwrite: true);
     }
+}
+
+static string FileHash(string path)
+{
+    using var stream = File.OpenRead(path);
+    return Convert.ToHexString(SHA256.HashData(stream));
+}
+
+static IReadOnlyList<string> GitTrackedFiles(string workingDirectory)
+{
+    var process = new Process
+    {
+        StartInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            Arguments = "ls-files",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        }
+    };
+
+    process.Start();
+    var stdout = process.StandardOutput.ReadToEnd();
+    var stderr = process.StandardError.ReadToEnd();
+    process.WaitForExit();
+    if (process.ExitCode != 0)
+    {
+        throw new InvalidOperationException("git ls-files failed: " + stderr);
+    }
+
+    return stdout
+        .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+        .ToList();
 }
 
 static void ExtractTemplateMedia(string docxPath, string destination)

@@ -11,6 +11,7 @@ namespace CEI.ReportGenerator.App.Views;
 public partial class ProjectWindow : Window
 {
     private readonly Project _project;
+    private bool _reportLoadWarningShown;
 
     public ProjectWindow(Project project)
     {
@@ -24,16 +25,31 @@ public partial class ProjectWindow : Window
 
     private void RefreshReports()
     {
-        ReportsGrid.ItemsSource = ReportStore.LoadAllReports(_project)
+        var loadResult = ReportStore.LoadAllReports(_project);
+        ReportsGrid.ItemsSource = loadResult.Reports
             .OrderByDescending(r => r.Number)
             .Select(r => new ReportListItem(r)).ToList();
+
+        if (loadResult.Issues.Count > 0 && !_reportLoadWarningShown)
+        {
+            _reportLoadWarningShown = true;
+            var lines = loadResult.Issues.Take(3)
+                .Select(i => $"{i.Path}: {i.Message}");
+            MessageBox.Show(
+                this,
+                "One or more saved reports could not be loaded:" + Environment.NewLine + string.Join(Environment.NewLine, lines),
+                "Report Load Warning",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private void NewReportButton_Click(object sender, RoutedEventArgs e)
     {
+        var nextNumber = ProjectStore.SynchronizeNextReportNumber(_project);
         var report = new InspectionReport
         {
-            Number = _project.NextReportNumber,
+            Number = nextNumber,
             Date = DateTime.Today
         };
         var editor = new ReportEditorWindow(_project, report, isNew: true);
