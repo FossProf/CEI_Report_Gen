@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 
 namespace CEI.ReportGenerator.Core.Services;
 
@@ -20,7 +21,9 @@ public static class JsonStore
         }
 
         var json = JsonSerializer.Serialize(value, Options);
-        File.WriteAllText(path, json);
+        var tempPath = Path.Combine(dir ?? Directory.GetCurrentDirectory(), $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+        File.WriteAllText(tempPath, json, Encoding.UTF8);
+        File.Move(tempPath, path, overwrite: true);
     }
 
     public static T? Load<T>(string path)

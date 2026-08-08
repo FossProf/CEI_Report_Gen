@@ -16,16 +16,36 @@ public static class ReportStore
 
         foreach (var photo in report.Photos)
         {
-            if (string.IsNullOrEmpty(photo.StoredFileName) && File.Exists(photo.SourcePath))
+            if (!string.IsNullOrWhiteSpace(photo.StoredFileName))
             {
-                photo.StoredFileName = ResolveStoredName(photosFolder, photo.SourcePath, storedIndex);
+                photo.StoredFileName = ValidateStoredFileName(photo.StoredFileName);
+            }
+
+            if (!File.Exists(photo.SourcePath))
+            {
+                continue;
+            }
+
+            _ = ImagePartManager.GetContentType(photo.SourcePath);
+            var bytes = ImageNormalizer.GetNormalizedBytes(photo.SourcePath);
+            var hash = ContentHash(bytes);
+            if (string.IsNullOrEmpty(photo.StoredFileName))
+            {
+                photo.StoredFileName = ResolveStoredName(photosFolder, photo.SourcePath, bytes, storedIndex);
+            }
+            else if (!storedIndex.CanUseName(photo.StoredFileName, hash))
+            {
+                photo.StoredFileName = ResolveStoredName(photosFolder, photo.SourcePath, bytes, storedIndex);
             }
 
             var storedPath = Path.Combine(photosFolder, photo.StoredFileName);
-            if (File.Exists(photo.SourcePath) && !File.Exists(storedPath))
+            EnsureWithinFolder(photosFolder, storedPath);
+            if (!File.Exists(storedPath))
             {
-                File.Copy(photo.SourcePath, storedPath);
+                File.WriteAllBytes(storedPath, bytes);
             }
+
+            storedIndex.Add(hash, photo.StoredFileName);
         }
 
         JsonStore.Save(ProjectLayout.ReportFilePath(project, report.Number), report);
@@ -35,6 +55,7 @@ public static class ReportStore
     {
         private readonly HashSet<string> _usedNames = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _hashToName = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _nameToHash = new(StringComparer.OrdinalIgnoreCase);
 
         public bool IsNameAvailable(string name)
             => !_usedNames.Contains(name) && !File.Exists(Path.Combine(StoredPhotoFolder, name));
@@ -44,11 +65,22 @@ public static class ReportStore
         public void Add(string hash, string name)
         {
             _usedNames.Add(name);
-            _hashToName.TryAdd(hash, name);
+            _hashToName[hash] = name;
+            _nameToHash[name] = hash;
         }
 
         public string? FindByHash(string hash)
             => _hashToName.TryGetValue(hash, out var name) ? name : null;
+
+        public bool CanUseName(string name, string hash)
+        {
+            if (_nameToHash.TryGetValue(name, out var existingHash))
+            {
+                return string.Equals(existingHash, hash, StringComparison.Ordinal);
+            }
+
+            return !File.Exists(Path.Combine(StoredPhotoFolder, name));
+        }
     }
 
     private static StoredPhotoIndex BuildStoredIndex(string photosFolder)
@@ -56,13 +88,13 @@ public static class ReportStore
         var index = new StoredPhotoIndex { StoredPhotoFolder = photosFolder };
         foreach (var file in Directory.EnumerateFiles(photosFolder))
         {
-            index.Add(ContentHash(file), Path.GetFileName(file));
+            index.Add(ContentHash(File.ReadAllBytes(file)), Path.GetFileName(file));
         }
 
         return index;
     }
 
-    private static string ResolveStoredName(string photosFolder, string sourcePath, StoredPhotoIndex index)
+    private static string ResolveStoredName(string photosFolder, string sourcePath, byte[] normalizedBytes, StoredPhotoIndex index)
     {
         var extension = Path.GetExtension(sourcePath);
         if (string.IsNullOrEmpty(extension))
@@ -70,7 +102,7 @@ public static class ReportStore
             extension = ".jpg";
         }
 
-        var hash = ContentHash(sourcePath);
+        var hash = ContentHash(normalizedBytes);
         var existing = index.FindByHash(hash);
         if (existing is not null)
         {
@@ -97,15 +129,55 @@ public static class ReportStore
         return candidate;
     }
 
-    private static string ContentHash(string path)
-    {
-        using var stream = File.OpenRead(path);
-        using var sha = System.Security.Cryptography.SHA256.Create();
-        return Convert.ToHexString(sha.ComputeHash(stream)).ToLowerInvariant();
-    }
+    private static string ContentHash(byte[] data)
+        => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data)).ToLowerInvariant();
 
     public static InspectionReport? LoadReport(Project project, int reportNumber)
         => JsonStore.Load<InspectionReport>(ProjectLayout.ReportFilePath(project, reportNumber));
+
+    public static int GetNextReportNumber(Project project)
+    {
+        var highest = GetOccupiedReportNumbers(project).DefaultIfEmpty(0).Max();
+        return Math.Max(project.NextReportNumber, highest + 1);
+    }
+
+    public static bool ReportNumberExists(Project project, int reportNumber)
+    {
+        var folder = ProjectLayout.ReportFolder(project, reportNumber);
+        if (!Directory.Exists(folder))
+        {
+            return false;
+        }
+
+        return Directory.EnumerateFileSystemEntries(folder).Any();
+    }
+
+    public static IReadOnlyList<int> GetOccupiedReportNumbers(Project project)
+    {
+        var reportsFolder = ProjectLayout.ReportsFolder(project);
+        if (!Directory.Exists(reportsFolder))
+        {
+            return Array.Empty<int>();
+        }
+
+        var occupied = new List<int>();
+        foreach (var dir in Directory.EnumerateDirectories(reportsFolder))
+        {
+            if (!int.TryParse(Path.GetFileName(dir), out var number))
+            {
+                continue;
+            }
+
+            var reportJson = Path.Combine(dir, "report.json");
+            var finalDocx = Path.Combine(dir, ProjectLayout.DefaultReportFileName(number));
+            if (File.Exists(reportJson) || File.Exists(finalDocx))
+            {
+                occupied.Add(number);
+            }
+        }
+
+        return occupied;
+    }
 
     public static List<InspectionReport> LoadAllReports(Project project)
     {
@@ -144,5 +216,45 @@ public static class ReportStore
 
         var stored = StoredPhotoPath(project, report, photo);
         return File.Exists(stored) ? stored : string.Empty;
+    }
+
+    public static void CleanupPreviewArtifacts(Project project, int reportNumber)
+    {
+        var previewPath = ProjectLayout.ReportPreviewPath(project, reportNumber);
+        if (File.Exists(previewPath))
+        {
+            File.Delete(previewPath);
+        }
+
+        var workingFolder = ProjectLayout.ReportWorkingFolder(project, reportNumber);
+        if (Directory.Exists(workingFolder) && !Directory.EnumerateFileSystemEntries(workingFolder).Any())
+        {
+            Directory.Delete(workingFolder);
+        }
+    }
+
+    private static string ValidateStoredFileName(string storedFileName)
+    {
+        if (string.IsNullOrWhiteSpace(storedFileName))
+        {
+            throw new InvalidOperationException("Stored photo file name cannot be empty.");
+        }
+
+        if (!string.Equals(Path.GetFileName(storedFileName), storedFileName, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Stored photo file names must be file names only.");
+        }
+
+        return storedFileName;
+    }
+
+    private static void EnsureWithinFolder(string folder, string path)
+    {
+        var normalizedFolder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+        var normalizedPath = Path.GetFullPath(path);
+        if (!normalizedPath.StartsWith(normalizedFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Stored photo path escapes the report photos folder.");
+        }
     }
 }

@@ -5,7 +5,10 @@ A standalone Windows desktop application that generates Cornerstone Engineering 
 
 The app takes a filled-in inspection report and a project's configuration (project info,
 inspector/PM signatures, approved template) and produces a populated `.docx` report in the
-project's `Reports` folder — without requiring Microsoft Word.
+project's `Reports` folder without requiring Microsoft Word.
+
+Project folders, reports, signatures, photos, previews, logs, and generated documents are
+runtime/user data and must not be committed to the repository.
 
 ## Requirements
 
@@ -21,22 +24,19 @@ dotnet run --project src/CEI.ReportGenerator.App
 
 ## How it works
 
-1. **New Project** — enter the project name, Cornerstone project number, owner,
-   contract manager, and general contractor; select a project folder, the approved CEI
-   Word template, and the Special Inspector and Project Manager signature images.
+1. New Project: enter the project name, Cornerstone project number, owner, contract
+   manager, and general contractor; select a project folder, the approved CEI Word
+   template, and the Special Inspector and Project Manager signature images.
 2. A project folder is created with `project.json`, a copy of the template, the signature
-   images, and a `Reports` folder. Everything is plain JSON + files — no database.
-3. **New Report** — enter the inspection date, weather (chosen from the approved list in
-   the dropdown), locations, inspectors, personnel, description of work, drawings
-   reviewed, observations, and discrepancies, and add photographs with captions. Reports
-   may have zero photos.
-4. **Generate Report** — the app validates the project and report, copies photos into the
-   report folder, and fills the approved Word template using the Open XML SDK. Generation
-   fails cleanly (with a dialog listing each problem) instead of producing a broken or
-   partially-filled document. The report number is only consumed on a successful draft.
-5. Review the generated document, then **Accept as Final**. The report is saved in
-   `Reports\0001\0001_SpecialInspectionReport.docx` and the project's next report number
-   is incremented.
+   images, and a `Reports` folder. Everything is plain JSON plus files, with no database.
+3. New Report: enter the inspection date, weather, locations, inspectors, personnel,
+   description of work, drawings reviewed, observations, discrepancies, and photo captions.
+4. Generate Report: the app validates the project and report, stores report photos safely,
+   fills the approved Word template using Open XML, and writes a preview to
+   `Reports\0001\working\preview.docx`.
+5. Accept as Final: after review, the preview is promoted to
+   `Reports\0001\0001_SpecialInspectionReport.docx`, the report is marked Final, and the
+   project's next report number advances to at least the finalized report number plus one.
 
 Projects can be closed and reopened from the main window; all state is reloaded from disk.
 
@@ -47,47 +47,40 @@ picked with dropdowns.
 
 ## Project structure
 
-```
+```text
 CEI_Report_Gen/
-├── templates/
-│   └── CEI_Base_Template_Refined.docx     approved template (placeholders + signature controls)
-├── Signatures/                            shared signature source library
-│   ├── Anthony Wintergerst.png
-│   └── Georgiy Orlov.jpg
-├── projects/                              project store
-│   └── CMF/                               sample project (openable in the app)
-├── tools/
-│   └── UpdateTemplateTags/                adds signature content controls to the template
-├── src/
-│   ├── CEI.ReportGenerator.Core/          models, persistence, template filling, validation
-│   ├── CEI.ReportGenerator.App/           WPF desktop application
-│   └── CEI.ReportGenerator.SmokeTests/    end-to-end console verification
+|-- templates/
+|   `-- CEI_Base_Template_Refined.docx
+|-- projects/
+|-- tools/
+|   `-- UpdateTemplateTags/
+`-- src/
+    |-- CEI.ReportGenerator.Core/
+    |-- CEI.ReportGenerator.App/
+    `-- CEI.ReportGenerator.SmokeTests/
 ```
 
-`Signatures/` is the shared source library you import from when setting up a project.
-`projects/` holds app-created project folders. `projects/CMF/` is a sample project with
-sample configuration values; open its folder from the app's main window to use it as a
-starting point.
+`projects/` holds app-created project folders and should stay local-only.
 
 A project folder created by the app looks like:
 
-```
+```text
 <Project Folder>/
-├── project.json
-├── Template.docx
-├── Signatures/
-│   ├── Anthony Wintergerst.png
-│   └── Georgiy Orlov.jpg
-└── Reports/
-    └── 0001/
-        ├── report.json
-        ├── 0001_SpecialInspectionReport.docx
-        └── photos/
+|-- project.json
+|-- Template.docx
+|-- Signatures/
+`-- Reports/
+    `-- 0001/
+        |-- working/
+        |   `-- preview.docx
+        |-- report.json
+        |-- 0001_SpecialInspectionReport.docx
+        `-- photos/
 ```
 
-`project.json` stores `folderPath` and `templatePath` relative to the project folder when
-possible, so a project folder can be moved or checked into a repository and reopened
-anywhere. Absolute paths (chosen by the user at creation time) are kept as-is.
+`project.json` stores `folderPath` as `.` and stores project-local assets relative to the
+project folder when possible, so a complete project directory can be copied and reopened on
+another machine.
 
 ## Template placeholders
 
@@ -131,22 +124,21 @@ is written:
 
 | Stage | What is checked |
 | --- | --- |
-| `ValidateProject` | Report number free, photos exist and are supported, both signature files present |
-| `ValidateReport` | Required fields filled, weather is on the approved list, photo captions present |
-| `CopyPhotos` | Photos copied into the report folder |
-| `ValidateTemplate` | Template preflight: all placeholders, signature controls, and the photo table present |
-| `CopyTemplate` | No overwrite of an existing report |
-| `FillTemplate` | Temp-file population of the document, then atomic move into place |
+| `ValidateProject` | Photos and signature files are present and safe |
+| `ValidateReport` | Required fields are filled and photo inputs are supported |
+| `ValidateTemplate` | Placeholders, signature controls, and the photo table exist |
+| `CopyTemplate` | A temporary document is created without touching the final report |
+| `FillTemplate` | Temp-file population, validation, and promotion into preview/final paths |
 
 On failure the app shows a dialog (with copy/open-log actions) and writes
-`generation-error.log` in the report folder. Failed drafts never leave a partial `.docx` and
-never consume the report number.
+`generation-error.log` in the report folder. Failed drafts never leave a partial `.docx`,
+never overwrite the final report, and never consume the report number.
 
 ## Smoke tests
 
 ```powershell
 dotnet build src/CEI.ReportGenerator.SmokeTests
-dotnet src/CEI.ReportGenerator.SmokeTests\bin\Debug\net8.0\CEI.ReportGenerator.SmokeTests.dll
+dotnet src\CEI.ReportGenerator.SmokeTests\bin\Debug\net8.0\CEI.ReportGenerator.SmokeTests.dll
 ```
 
 Set `CEI_KEEP_WORKSPACE=1` to keep the temporary workspace the test uses for inspection.

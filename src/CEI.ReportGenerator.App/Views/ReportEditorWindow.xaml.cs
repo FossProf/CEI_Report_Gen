@@ -364,7 +364,7 @@ public partial class ReportEditorWindow : Window
             }
             else if (number != _report.Number)
             {
-                if (ReportStore.LoadReport(_project, number) is not null)
+                if (ReportStore.ReportNumberExists(_project, number))
                 {
                     errors.Add($"A report with number {number} already exists. Choose a different number.");
                 }

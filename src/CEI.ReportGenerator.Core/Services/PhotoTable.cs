@@ -34,8 +34,6 @@ public sealed class PhotoPlace
 
     public IReadOnlyList<PhotoSlot> Slots { get; }
 
-    public bool IsRemovable => HeadingParagraph is not null && InstructionParagraph is not null;
-
     public bool CanRepeat => Slots.Count >= 1;
 }
 

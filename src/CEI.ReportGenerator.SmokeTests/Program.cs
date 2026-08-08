@@ -7,6 +7,7 @@ using CEI.ReportGenerator.Core.Services;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using A = DocumentFormat.OpenXml.Drawing;
+using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 
 var root = FindRepoRoot();
 var templatePath = Environment.GetEnvironmentVariable("CEI_TEMPLATE_PATH");
@@ -185,6 +186,18 @@ try
         }
     }
 
+    Console.WriteLine("\n== Preview can be regenerated without accepting ==");
+    var previewReport = MakeReport(project, 20, 1, "Sunny", photoFiles);
+    var previewResult1 = ReportGenerator.GenerateDraft(project, previewReport);
+    var previewText1 = ReadBodyText(previewResult1.OutputPath);
+    previewReport.Observations = "Updated observations after review.";
+    var previewResult2 = ReportGenerator.GenerateDraft(project, previewReport);
+    var previewText2 = ReadBodyText(previewResult2.OutputPath);
+    Assert(previewResult1.OutputPath == previewResult2.OutputPath, "preview path is stable for repeated generate");
+    Assert(File.Exists(previewResult2.OutputPath), "preview exists after regenerate");
+    Assert(previewText1.Contains("All welds visually inspected", StringComparison.Ordinal), "initial preview contains original observations");
+    Assert(previewText2.Contains("Updated observations after review.", StringComparison.Ordinal), "regenerated preview reflects edited observations");
+
     Console.WriteLine("\n== Empty photo captions omit colon and stay centered ==");
     var noCaptionReport = MakeReport(project, 9, 2, "Sunny", photoFiles);
     noCaptionReport.Photos[0].Caption = string.Empty;
@@ -212,13 +225,25 @@ try
         e => e.Contains("approved options", StringComparison.OrdinalIgnoreCase));
     Assert(project.NextReportNumber == beforeFailure, "failed generation does not increment report number");
     var failureFolder = ProjectLayout.ReportFolder(project, invalidWeatherReport.Number);
-    Assert(!Directory.Exists(failureFolder) || !Directory.EnumerateFiles(failureFolder).Any(),
+    Assert(!Directory.Exists(failureFolder) || !Directory.EnumerateFileSystemEntries(failureFolder, "*", SearchOption.AllDirectories).Any(),
         "failed generation leaves no partial output files");
 
-    Console.WriteLine("\n== No-overwrite protection ==");
-    var overwriteReport = MakeReport(project, 2, 1, "Sunny", photoFiles);
-    ExpectGenerationFailure(project, overwriteReport, GenerationStage.CopyTemplate,
-        e => e.Contains("already exists", StringComparison.OrdinalIgnoreCase));
+    Console.WriteLine("\n== Output validation failure leaves no preview doc ==");
+    var unresolvedTemplate = Path.Combine(workspace, "unresolved_template.docx");
+    File.Copy(templatePath, unresolvedTemplate);
+    using (var invalid = WordprocessingDocument.Open(unresolvedTemplate, true))
+    {
+        invalid.MainDocumentPart!.Document.Body!.Append(new Paragraph(new Run(new Text("{project.unknown}"))));
+        invalid.MainDocumentPart.Document.Save();
+    }
+
+    var invalidOutputProject = ProjectStore.Load(projectFolder)!;
+    invalidOutputProject.TemplatePath = unresolvedTemplate;
+    var invalidOutputReport = MakeReport(invalidOutputProject, 30, 0, "Sunny", photoFiles);
+    ExpectGenerationFailure(invalidOutputProject, invalidOutputReport, GenerationStage.ValidateOutput,
+        e => e.Contains("unresolved template placeholders", StringComparison.OrdinalIgnoreCase));
+    Assert(!File.Exists(ProjectLayout.ReportPreviewPath(invalidOutputProject, invalidOutputReport.Number)),
+        "failed output validation leaves no preview doc");
 
     Console.WriteLine("\n== Template validation surfaced at generation ==");
     var badTemplate = Path.Combine(workspace, "broken_template.docx");
@@ -226,7 +251,7 @@ try
     using (var broken = WordprocessingDocument.Open(badTemplate, true))
     {
         var firstTag = broken.MainDocumentPart!.Document.Body!
-            .Descendants<SdtBlock>()
+            .Descendants<SdtElement>()
             .First(b => b.SdtProperties?.GetFirstChild<SdtAlias>()?.Val?.Value is not null);
         firstTag.Remove();
         broken.MainDocumentPart.Document.Save();
@@ -260,11 +285,15 @@ try
     var sourceNames = finalizeReport.Photos.Select(p => Path.GetFileName(p.SourcePath)).OrderBy(n => n).ToArray();
     Assert(storedNames.SequenceEqual(sourceNames), "stored photos keep original file names (order-independent)");
 
+    var finalReportPath = ProjectLayout.FinalReportPath(project, finalizeReport.Number);
+    Assert(!File.Exists(finalReportPath), "final report file does not exist before accept");
     ReportGenerator.FinalizeReport(project, finalizeReport, finalizeResult!.OutputPath);
     Assert(finalizeReport.Status == ReportStatus.Final, "report status is Final");
+    Assert(File.Exists(finalReportPath), "final report file exists after accept");
+    Assert(!File.Exists(ProjectLayout.ReportPreviewPath(project, finalizeReport.Number)), "preview cleaned up after finalization");
 
     var finalProject = ProjectStore.Load(projectFolder);
-    Assert(finalProject!.NextReportNumber == 2, "next report number incremented to 2 after finalize");
+    Assert(finalProject!.NextReportNumber == 5, $"next report number advances to finalized report + 1 (expected 5, got {finalProject.NextReportNumber})");
     var savedReport = ReportStore.LoadReport(finalProject, finalizeReport.Number);
     Assert(savedReport is not null, "report reloaded from disk");
     Assert(savedReport!.Status == ReportStatus.Final, "reloaded report is Final");
@@ -273,6 +302,48 @@ try
 
     var allReports = ReportStore.LoadAllReports(finalProject);
     Assert(allReports.Count == 1, "one report.json listed in project (only the finalized report was saved)");
+
+    Console.WriteLine("\n== Manual report number override advances correctly ==");
+    var manualProject = ProjectStore.Create(
+        Path.Combine(workspace, "manual_project"), "Manual", "42", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    manualProject.NextReportNumber = 2;
+    ProjectStore.Save(manualProject);
+    var manualReport5 = MakeReport(manualProject, 5, 1, "Sunny", photoFiles);
+    var manualPreview5 = ReportGenerator.GenerateDraft(manualProject, manualReport5);
+    ReportGenerator.FinalizeReport(manualProject, manualReport5, manualPreview5.OutputPath);
+    var manualReloaded = ProjectStore.Load(manualProject.FolderPath)!;
+    Assert(manualReloaded.NextReportNumber == 6, "Next = 2, finalize 5 -> Next = 6");
+    Assert(ReportStore.ReportNumberExists(manualReloaded, 5), "occupied report number detected after finalization");
+    var manualReport3 = MakeReport(manualReloaded, 3, 1, "Sunny", photoFiles);
+    var manualPreview3 = ReportGenerator.GenerateDraft(manualReloaded, manualReport3);
+    ReportGenerator.FinalizeReport(manualReloaded, manualReport3, manualPreview3.OutputPath);
+    var manualReloadedAgain = ProjectStore.Load(manualProject.FolderPath)!;
+    Assert(manualReloadedAgain.NextReportNumber == 6, "Next = 6, finalize 3 -> Next remains 6");
+
+    Console.WriteLine("\n== Project remains portable after directory move ==");
+    var portableCreatedFolder = Path.Combine(workspace, "portable_created");
+    var portableCreated = ProjectStore.Create(
+        portableCreatedFolder, "Portable Created", "77", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var movedFolder = Path.Combine(workspace, "portable_moved", "Portable Created");
+    CopyDirectory(portableCreatedFolder, movedFolder);
+    var movedProject = ProjectStore.Load(movedFolder);
+    Assert(movedProject is not null, "moved project loaded");
+    Assert(movedProject!.TemplatePath.Equals(Path.Combine(movedFolder, "Template.docx"), StringComparison.OrdinalIgnoreCase),
+        "moved project template resolves relative to new location");
+    Assert(File.Exists(movedProject.ResolvedInspectorSignaturePath!), "moved project inspector signature resolves");
+    Assert(File.Exists(movedProject.ResolvedProjectManagerSignaturePath!), "moved project pm signature resolves");
+
+    Console.WriteLine("\n== Stored photo filename traversal is rejected ==");
+    var photoSafetyProject = ProjectStore.Create(
+        Path.Combine(workspace, "photo_safety"), "Photo Safety", "8", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var photoSafetyReport = MakeReport(photoSafetyProject, 1, 1, "Sunny", photoFiles);
+    photoSafetyReport.Photos[0].StoredFileName = "../escape.jpg";
+    ExpectActionFailure(
+        () => ReportStore.SaveReport(photoSafetyProject, photoSafetyReport),
+        message => message.Contains("file names only", StringComparison.OrdinalIgnoreCase));
 
     Console.WriteLine("\n== Identical photo content stored once (dedupe) ==");
     var dedupeProject = ProjectStore.Create(
@@ -367,6 +438,19 @@ static void ExpectGenerationFailure(Project project, InspectionReport report, Ge
     }
 }
 
+static void ExpectActionFailure(Action action, Func<string, bool> messageCheck)
+{
+    try
+    {
+        action();
+        throw new InvalidOperationException("Expected operation to fail but it succeeded.");
+    }
+    catch (Exception ex) when (messageCheck(ex.Message))
+    {
+        Console.WriteLine("  ok: failure matched expectation: " + ex.Message);
+    }
+}
+
 static void VerifyGeneratedDocument(string docxPath, int photoCount, List<string> baselineErrors, string templatePath)
 {
     using var doc = WordprocessingDocument.Open(docxPath, false);
@@ -409,14 +493,16 @@ static void VerifyGeneratedDocument(string docxPath, int photoCount, List<string
         Assert(part is ImagePart, $"blip {blip.Embed} resolves to image part");
     }
 
-    var sdtBlocks = body.Descendants<SdtBlock>()
+    var sdtElements = body.Descendants<SdtElement>()
         .Where(b => b.SdtProperties?.GetFirstChild<SdtAlias>()?.Val?.Value is not null)
         .ToList();
-    Assert(sdtBlocks.Count == 2, "both signature content controls preserved in output");
-    Assert(sdtBlocks.All(b => b.Descendants<A.Blip>().Any(blip => mainPart.GetPartById(blip.Embed!) is ImagePart)),
+    Assert(sdtElements.Count == 2, "both signature content controls preserved in output");
+    Assert(sdtElements.All(b => b.Descendants<A.Blip>().Any(blip => mainPart.GetPartById(blip.Embed!) is ImagePart)),
         "each signature content control embeds an image");
-    Assert(sdtBlocks.All(b => b.Descendants<A.Blip>().Count() == 1),
+    Assert(sdtElements.All(b => b.Descendants<A.Blip>().Count() == 1),
         "each signature content control contains exactly one signature drawing");
+
+    AssertPhotoSizing(mainPart, body, photoCount);
 
     AssertLogosUnchanged(templatePath, docxPath);
 
@@ -437,6 +523,39 @@ static void VerifyGeneratedDocument(string docxPath, int photoCount, List<string
 
     Assert(newErrors.Count == 0, "generated document introduces no new OpenXml validation errors");
     Console.WriteLine($"  Document verified: {blips.Count} images embedded, no unresolved placeholders.");
+}
+
+static void AssertPhotoSizing(MainDocumentPart mainPart, Body body, int photoCount)
+{
+    const long PhotoHeightEmu = 3474720; // 3.8 inches (two photos + captions per page)
+    var photos = body.Descendants<DW.Inline>()
+        .Where(i => i.Extent is not null && i.Extent.Cy?.Value == PhotoHeightEmu)
+        .ToList();
+    Assert(photos.Count == photoCount, $"expected {photoCount} photo drawing(s) at 3.8-inch height, found {photos.Count}");
+
+    foreach (var photo in photos)
+    {
+        var blip = photo.Descendants<A.Blip>().First();
+        var part = (ImagePart)mainPart.GetPartById(blip.Embed!);
+        var temp = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".img");
+        try
+        {
+            using (var source = part.GetStream())
+            using (var file = File.Create(temp))
+            {
+                source.CopyTo(file);
+            }
+
+            var (naturalWidth, naturalHeight) = ImageInfo.GetPixelSize(temp);
+            var expectedCx = (long)(PhotoHeightEmu * (double)naturalWidth / naturalHeight);
+            Assert(Math.Abs(expectedCx - photo.Extent!.Cx!.Value) <= 1,
+                $"photo width {photo.Extent.Cx} EMU is aspect-locked to 3.8-inch height (expected ~{expectedCx})");
+        }
+        finally
+        {
+            File.Delete(temp);
+        }
+    }
 }
 
 static void AssertLogosUnchanged(string templatePath, string outputPath)
@@ -480,6 +599,29 @@ static string FindRepoRoot()
     }
 
     return Directory.GetCurrentDirectory();
+}
+
+static string ReadBodyText(string docxPath)
+{
+    using var doc = WordprocessingDocument.Open(docxPath, false);
+    return string.Concat(doc.MainDocumentPart!.Document.Body!.Descendants<Text>().Select(t => t.Text));
+}
+
+static void CopyDirectory(string source, string destination)
+{
+    Directory.CreateDirectory(destination);
+    foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
+    {
+        var targetDirectory = Path.Combine(destination, Path.GetRelativePath(source, directory));
+        Directory.CreateDirectory(targetDirectory);
+    }
+
+    foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+    {
+        var targetFile = Path.Combine(destination, Path.GetRelativePath(source, file));
+        Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
+        File.Copy(file, targetFile, overwrite: true);
+    }
 }
 
 static void ExtractTemplateMedia(string docxPath, string destination)

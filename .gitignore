@@ -4,3 +4,11 @@ obj/
 .vs/
 *.suo
 .DS_Store
+
+# User-created project data
+projects/*
+!projects/.gitkeep
+Signatures/*
+!Signatures/.gitkeep
+*.tmp.docx
+generation-error.log

@@ -12,6 +12,10 @@ public static class ProjectLayout
 
     public const string PhotosFolderName = "photos";
 
+    public const string WorkingFolderName = "working";
+
+    public const string PreviewFileName = "preview.docx";
+
     public const string TemplateFileName = "Template.docx";
 
     public static string ReportsFolder(Project project)
@@ -25,6 +29,15 @@ public static class ProjectLayout
 
     public static string ReportPhotosFolder(Project project, int reportNumber)
         => Path.Combine(ReportFolder(project, reportNumber), PhotosFolderName);
+
+    public static string ReportWorkingFolder(Project project, int reportNumber)
+        => Path.Combine(ReportFolder(project, reportNumber), WorkingFolderName);
+
+    public static string ReportPreviewPath(Project project, int reportNumber)
+        => Path.Combine(ReportWorkingFolder(project, reportNumber), PreviewFileName);
+
+    public static string FinalReportPath(Project project, int reportNumber)
+        => Path.Combine(ReportFolder(project, reportNumber), DefaultReportFileName(reportNumber));
 
     public static string SignaturesFolder(Project project)
         => Path.Combine(project.FolderPath, SignaturesFolderName);

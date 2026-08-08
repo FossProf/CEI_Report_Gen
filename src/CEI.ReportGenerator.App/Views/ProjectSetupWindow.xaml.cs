@@ -231,15 +231,16 @@ public partial class ProjectSetupWindow : Window
             }
             else
             {
-                _existing.Name = NameBox.Text.Trim();
-                _existing.Number = NumberBox.Text.Trim();
-                _existing.Owner = OwnerBox.Text.Trim();
-                _existing.ContractManager = ContractBox.Text.Trim();
-                _existing.GeneralContractor = GeneralBox.Text.Trim();
-                _existing.TemplatePath = TemplateBox.Text.Trim();
-                _existing.InspectorSignaturePath = SignatureStore.SignatureRelativePath(inspectorSig!);
-                _existing.ProjectManagerSignaturePath = SignatureStore.SignatureRelativePath(pmSig!);
-                ProjectStore.Save(_existing);
+                ProjectStore.Update(
+                    _existing,
+                    NameBox.Text,
+                    NumberBox.Text,
+                    OwnerBox.Text,
+                    ContractBox.Text,
+                    GeneralBox.Text,
+                    TemplateBox.Text,
+                    SignatureStore.SignatureRelativePath(inspectorSig!),
+                    SignatureStore.SignatureRelativePath(pmSig!));
                 CreatedProject = _existing;
             }
 

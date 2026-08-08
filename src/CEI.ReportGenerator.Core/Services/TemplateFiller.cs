@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using CEI.ReportGenerator.Core.Models;
 using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Validation;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using A = DocumentFormat.OpenXml.Drawing;
@@ -46,9 +47,9 @@ public sealed class GenerationException : Exception
 
 public static class TemplateFiller
 {
-    private const double DxaToEmu = 635.0;
-
     private const long EmuPerPixel = 9525; // 914400 EMU per inch at 96 DPI
+
+    private const long PhotoHeightEmu = 3474720; // 3.8 inches: two photos + captions fit one page (template rows are 5636 twips)
 
     private static readonly string RelationshipNamespace =
         "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -59,13 +60,13 @@ public static class TemplateFiller
         (TemplateValidator.RequiredSignatureTags[1], "Project Manager")
     ];
 
-    public static GenerationResult Generate(Project project, InspectionReport report, string outputPath)
+    public static GenerationResult Generate(Project project, InspectionReport report, string outputPath, bool overwriteExistingOutput = false)
     {
         var stage = GenerationStage.CopyTemplate;
         string? tempPath = null;
         try
         {
-            if (File.Exists(outputPath))
+            if (File.Exists(outputPath) && !overwriteExistingOutput)
             {
                 throw new GenerationException(GenerationStage.CopyTemplate,
                     new[] { $"A report file already exists at {outputPath}." });
@@ -93,16 +94,17 @@ public static class TemplateFiller
                 ReplaceSignatures(mainPart, project);
 
                 RemoveInstructionText(body);
+                EnsureTrailingParagraph(body);
 
                 mainPart.Document.Save();
             }
 
-            stage = GenerationStage.SaveDocument;
-            File.Move(tempPath, outputPath);
-            tempPath = null;
-
             stage = GenerationStage.ValidateOutput;
-            ValidateOutput(outputPath);
+            ValidateOutput(tempPath, project.TemplatePath);
+
+            stage = GenerationStage.SaveDocument;
+            File.Move(tempPath, outputPath, overwrite: overwriteExistingOutput);
+            tempPath = null;
 
             return new GenerationResult(outputPath);
         }
@@ -140,7 +142,7 @@ public static class TemplateFiller
         }
     }
 
-    private static void ValidateOutput(string outputPath)
+    private static void ValidateOutput(string outputPath, string templatePath)
     {
         using var document = WordprocessingDocument.Open(outputPath, false);
         var mainPart = document.MainDocumentPart
@@ -155,6 +157,15 @@ public static class TemplateFiller
         {
             throw new GenerationException(GenerationStage.ValidateOutput,
                 new[] { "The generated document still contains unresolved template placeholders." });
+        }
+
+        var baselineErrors = CollectValidationErrors(templatePath);
+        var outputErrors = CollectValidationErrors(outputPath);
+        var newErrors = outputErrors.Where(e => !baselineErrors.Contains(e)).ToList();
+        if (newErrors.Count > 0)
+        {
+            throw new GenerationException(GenerationStage.ValidateOutput,
+                newErrors.Select(e => "Generated document validation error: " + e).ToList());
         }
     }
 
@@ -412,17 +423,13 @@ public static class TemplateFiller
         var place = places[0];
         if (photos.Count == 0)
         {
-            if (!place.IsRemovable)
-            {
-                throw new GenerationException(GenerationStage.ProcessPhotos,
-                    new[] { "The template photo section could not be located for removal." });
-            }
-
-            place.HeadingParagraph!.Remove();
+            place.HeadingParagraph?.Remove();
             place.Table.Remove();
-            place.InstructionParagraph!.Remove();
+            place.InstructionParagraph?.Remove();
             return;
         }
+
+        MakeTableInline(place.Table);
 
         var slots = new List<PhotoSlot>(place.Slots);
         var photoId = 1000;
@@ -450,9 +457,8 @@ public static class TemplateFiller
         while (slots.Count < photoCount)
         {
             var clone = (Table)place.Table.CloneNode(true);
-            var pageBreak = new Paragraph(new Run(new Break { Type = BreakValues.Page }));
-            anchor.InsertAfterSelf(pageBreak);
-            pageBreak.InsertAfterSelf(clone);
+            SetPageBreakBefore(clone);
+            anchor.InsertAfterSelf(clone);
             anchor = clone;
 
             var cloneSlots = PhotoTable.CollectSlots(clone);
@@ -464,6 +470,33 @@ public static class TemplateFiller
 
             slots.AddRange(cloneSlots);
         }
+    }
+
+    private static void SetPageBreakBefore(Table table)
+    {
+        var firstParagraph = table.Descendants<Paragraph>().FirstOrDefault();
+        if (firstParagraph is null)
+        {
+            return;
+        }
+
+        var properties = firstParagraph.Elements<ParagraphProperties>().FirstOrDefault();
+        if (properties is null)
+        {
+            properties = new ParagraphProperties();
+            firstParagraph.PrependChild(properties);
+        }
+
+        if (properties.GetFirstChild<PageBreakBefore>() is null)
+        {
+            properties.PrependChild(new PageBreakBefore());
+        }
+    }
+
+    private static void MakeTableInline(Table table)
+    {
+        var properties = table.Elements<TableProperties>().FirstOrDefault();
+        properties?.RemoveAllChildren<TablePositionProperties>();
     }
 
     private static void RemoveSlotRows(PhotoSlot slot)
@@ -632,6 +665,30 @@ public static class TemplateFiller
         }
     }
 
+    private static void EnsureTrailingParagraph(Body body)
+    {
+        var sectPr = body.GetFirstChild<SectionProperties>();
+        if (sectPr is null)
+        {
+            return;
+        }
+
+        var previous = sectPr.PreviousSibling();
+        if (previous is not Table)
+        {
+            return;
+        }
+
+        var trailingParagraph = new Paragraph(
+            new ParagraphProperties(
+                new SpacingBetweenLines { After = "0", Line = "0", LineRule = LineSpacingRuleValues.Exact },
+                new RunProperties(
+                    new FontSize { Val = "2" },
+                    new FontSizeComplexScript { Val = "2" })));
+
+        sectPr.InsertBeforeSelf(trailingParagraph);
+    }
+
     private static void InsertPhoto(MainDocumentPart mainPart, Paragraph paragraph, Photo photo, ref int photoId)
     {
         foreach (var run in paragraph.Elements<Run>().ToList())
@@ -641,24 +698,34 @@ public static class TemplateFiller
 
         var relationshipId = NewRelationshipId(mainPart);
         var imagePart = mainPart.AddImagePart(ImagePartManager.GetContentType(photo.SourcePath), relationshipId);
-        using (var stream = File.OpenRead(photo.SourcePath))
+        var imageBytes = ImageNormalizer.GetNormalizedBytes(photo.SourcePath);
+        using (var stream = new MemoryStream(imageBytes))
         {
             imagePart.FeedData(stream);
         }
 
-        var (maxWidth, maxHeight) = GetFrameSize(paragraph);
         var (naturalWidth, naturalHeight) = ImageInfo.GetPixelSize(photo.SourcePath);
 
         var naturalWidthEmu = naturalWidth * EmuPerPixel;
         var naturalHeightEmu = naturalHeight * EmuPerPixel;
-        var scale = Math.Min((double)maxWidth / naturalWidthEmu, (double)maxHeight / naturalHeightEmu);
-        scale = Math.Min(scale, 1.0);
-        var cx = (long)(naturalWidthEmu * scale);
-        var cy = (long)(naturalHeightEmu * scale);
+        var cy = PhotoHeightEmu;
+        var cx = (long)(PhotoHeightEmu * naturalWidthEmu / (double)naturalHeightEmu);
 
         var drawing = CreateInlineDrawing(relationshipId, cx, cy, photoId);
         photoId++;
         paragraph.AppendChild(new Run(drawing));
+
+        var cell = paragraph.Ancestors<TableCell>().FirstOrDefault();
+        if (cell is not null)
+        {
+            foreach (var other in cell.Elements<Paragraph>().Where(p => !ReferenceEquals(p, paragraph)).ToList())
+            {
+                if (!string.IsNullOrWhiteSpace(PhotoTable.ParagraphText(other)))
+                {
+                    other.Remove();
+                }
+            }
+        }
     }
 
     private static string NewRelationshipId(MainDocumentPart mainPart)
@@ -673,38 +740,6 @@ public static class TemplateFiller
         while (existing.Contains(id));
 
         return id;
-    }
-
-    private static (long Width, long Height) GetFrameSize(Paragraph paragraph)
-    {
-        var cell = paragraph.Ancestors<TableCell>().FirstOrDefault();
-        var row = paragraph.Ancestors<TableRow>().FirstOrDefault();
-
-        var widthDxa = 9200.0;
-        if (cell?.TableCellProperties?.TableCellWidth?.Width?.Value is string w && double.TryParse(w, out var parsedWidth))
-        {
-            widthDxa = parsedWidth;
-        }
-
-        double left = 80, right = 80;
-        var margins = cell?.TableCellProperties?.TableCellMargin;
-        if (margins?.StartMargin?.Width?.Value is string ms && double.TryParse(ms, out var parsedStart)) left = parsedStart;
-        if (margins?.EndMargin?.Width?.Value is string me && double.TryParse(me, out var parsedEnd)) right = parsedEnd;
-        widthDxa -= left + right;
-
-        var heightDxa = 4824.0;
-        var rowHeight = row?.TableRowProperties?.Elements<TableRowHeight>().FirstOrDefault();
-        if (rowHeight?.Val?.Value is uint hv && hv > 0)
-        {
-            heightDxa = hv;
-        }
-
-        double top = 80, bottom = 80;
-        if (margins?.TopMargin?.Width?.Value is string mt && double.TryParse(mt, out var parsedTop)) top = parsedTop;
-        if (margins?.BottomMargin?.Width?.Value is string mb && double.TryParse(mb, out var parsedBottom)) bottom = parsedBottom;
-        heightDxa -= top + bottom;
-
-        return ((long)(widthDxa * DxaToEmu), (long)(heightDxa * DxaToEmu));
     }
 
     private static Drawing CreateInlineDrawing(string relationshipId, long cx, long cy, int id)
@@ -751,7 +786,7 @@ public static class TemplateFiller
         var body = mainPart.Document.Body!;
         foreach (var (tag, role) in SignatureAreas)
         {
-            var block = body.Descendants<SdtBlock>()
+            var block = body.Descendants<SdtElement>()
                 .FirstOrDefault(b => b.SdtProperties?.GetFirstChild<SdtAlias>()?.Val?.Value == tag);
             if (block is null)
             {
@@ -773,7 +808,7 @@ public static class TemplateFiller
         }
     }
 
-    private static void ReplaceSignatureImage(MainDocumentPart mainPart, SdtBlock block, string signaturePath)
+    private static void ReplaceSignatureImage(MainDocumentPart mainPart, SdtElement block, string signaturePath)
     {
         var blip = block.Descendants<A.Blip>().FirstOrDefault();
         if (blip is null)
@@ -842,5 +877,25 @@ public static class TemplateFiller
         {
             return false;
         }
+    }
+
+    private static List<string> CollectValidationErrors(string path)
+    {
+        using var document = WordprocessingDocument.Open(path, false);
+        var validator = new OpenXmlValidator();
+        return validator.Validate(document.MainDocumentPart!.Document)
+            .Select(e => NormalizePath(e.Path?.XPath) + ": " + e.Description)
+            .Distinct()
+            .ToList();
+    }
+
+    private static string NormalizePath(string? xpath)
+    {
+        if (string.IsNullOrWhiteSpace(xpath))
+        {
+            return string.Empty;
+        }
+
+        return Regex.Replace(xpath, @"\[\d+\]", "[N]");
     }
 }

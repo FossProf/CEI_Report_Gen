@@ -17,7 +17,7 @@ public partial class GenerationResultWindow : Window
 
     private void OpenReportButton_Click(object sender, RoutedEventArgs e)
     {
-        OpenFile(_outputPath);
+        OpenPath(_outputPath);
     }
 
     private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
@@ -25,7 +25,7 @@ public partial class GenerationResultWindow : Window
         var folder = Path.GetDirectoryName(_outputPath);
         if (folder is not null)
         {
-            OpenFile(folder);
+            OpenPath(folder);
         }
     }
 
@@ -34,11 +34,18 @@ public partial class GenerationResultWindow : Window
         DialogResult = true;
     }
 
-    private static void OpenFile(string path)
+    private static void OpenPath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        if (string.IsNullOrWhiteSpace(path))
         {
-            MessageBox.Show("The file could not be found.", "Open",
+            MessageBox.Show("The path could not be found.", "Open",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!File.Exists(path) && !Directory.Exists(path))
+        {
+            MessageBox.Show("The file or folder could not be found.", "Open",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -53,7 +60,7 @@ public partial class GenerationResultWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not open the file.\n{ex.Message}", "Open",
+            MessageBox.Show($"Could not open the selected path.\n{ex.Message}", "Open",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }

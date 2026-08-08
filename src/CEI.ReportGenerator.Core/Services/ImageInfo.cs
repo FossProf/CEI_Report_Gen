@@ -2,6 +2,74 @@ namespace CEI.ReportGenerator.Core.Services;
 
 public static class ImageInfo
 {
+    public static int GetExifOrientation(string path)
+    {
+        using var stream = File.OpenRead(path);
+        var header = new byte[2];
+        if (stream.Read(header, 0, header.Length) < 2 || header[0] != 0xFF || header[1] != 0xD8)
+        {
+            return 1;
+        }
+
+        return ReadJpegOrientation(stream);
+    }
+
+    private static int ReadJpegOrientation(Stream stream)
+    {
+        stream.Position = 2;
+        var marker = stream.ReadByte();
+        while (marker != -1)
+        {
+            while (marker == 0xFF)
+            {
+                marker = stream.ReadByte();
+            }
+
+            if (marker is 0xD8 or 0x01 or >= 0xD0 and <= 0xD7)
+            {
+                marker = stream.ReadByte();
+                continue;
+            }
+
+            var len = (stream.ReadByte() << 8) | stream.ReadByte();
+            var payloadStart = stream.Position;
+
+            if (marker == 0xE1)
+            {
+                var payload = new byte[len - 2];
+                var read = ReadFully(stream, payload);
+                if (read >= 14 && payload[0] == 'E' && payload[1] == 'x' && payload[2] == 'i' && payload[3] == 'f'
+                    && payload[4] == 0 && payload[5] == 0)
+                {
+                    var orientation = TryReadExifOrientation(payload, 6);
+                    if (orientation >= 1 && orientation <= 8)
+                    {
+                        return orientation;
+                    }
+                }
+
+                if (read < len - 2)
+                {
+                    stream.Position = payloadStart + len - 2;
+                }
+            }
+            else
+            {
+                var isSof = marker is >= 0xC0 and <= 0xCF and not 0xC4 and not 0xC8 and not 0xCC;
+                if (isSof)
+                {
+                    return 1;
+                }
+
+                stream.Seek(len - 2, SeekOrigin.Current);
+            }
+
+            marker = stream.ReadByte();
+        }
+
+        return 1;
+    }
+
     public static (int Width, int Height) GetPixelSize(string path)
     {
         using var stream = File.OpenRead(path);

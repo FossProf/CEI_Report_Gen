@@ -113,11 +113,6 @@ public static class TemplateValidator
                         errors.Add($"Photo table contains {place.Slots} photo slot(s); expected 1 to 3.");
                     }
 
-                    if (!place.IsRemovable)
-                    {
-                        errors.Add("Photo table could not be located for removal when a report has no photos.");
-                    }
-
                     if (!place.CanRepeat)
                     {
                         errors.Add("Photo table cannot be repeated for additional photos.");
@@ -156,7 +151,7 @@ public static class TemplateValidator
 
     private static bool ContainsContentControlTag(Body body, string tag)
     {
-        return body.Descendants<SdtBlock>().Any(block =>
+        return body.Descendants<SdtElement>().Any(block =>
             block.SdtProperties?.GetFirstChild<SdtAlias>()?.Val is not null &&
             block.SdtProperties.GetFirstChild<SdtAlias>()!.Val!.Value == tag);
     }

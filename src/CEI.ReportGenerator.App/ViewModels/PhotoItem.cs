@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CEI.ReportGenerator.Core.Models;
+using CEI.ReportGenerator.Core.Services;
 
 namespace CEI.ReportGenerator.App.ViewModels;
 
@@ -78,11 +79,12 @@ public sealed class PhotoItem : ObservableObject
 
         try
         {
+            var bytes = ImageNormalizer.GetNormalizedBytes(_photo.SourcePath);
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(_photo.SourcePath, UriKind.Absolute);
             bitmap.DecodePixelWidth = 128;
+            bitmap.StreamSource = new MemoryStream(bytes);
             bitmap.EndInit();
             bitmap.Freeze();
             Thumbnail = bitmap;

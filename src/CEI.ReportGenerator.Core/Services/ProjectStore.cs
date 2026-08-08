@@ -15,7 +15,7 @@ public static class ProjectStore
             Owner = owner.Trim(),
             ContractManager = contractManager.Trim(),
             GeneralContractor = generalContractor.Trim(),
-            FolderPath = folderPath,
+            FolderPath = Path.GetFullPath(folderPath),
             CreatedUtc = DateTime.UtcNow
         };
 
@@ -49,7 +49,7 @@ public static class ProjectStore
 
         if (resolved.Status == SignatureResolveStatus.OutsideProject)
         {
-            var imported = SignatureStore.Import(project.FolderPath, signatureSourcePath, replaceIfExists: true);
+            var imported = SignatureStore.Import(project.FolderPath, signatureSourcePath, replaceIfExists: false);
             if (imported is not null)
             {
                 return imported;
@@ -63,29 +63,23 @@ public static class ProjectStore
     {
         Directory.CreateDirectory(project.FolderPath);
 
-        var absoluteFolderPath = project.FolderPath;
-        var absoluteTemplatePath = project.TemplatePath;
-        var filePath = Path.Combine(absoluteFolderPath, ProjectLayout.ProjectFileName);
+        var filePath = Path.Combine(project.FolderPath, ProjectLayout.ProjectFileName);
+        JsonStore.Save(filePath, ToPortableProject(project));
+    }
 
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(project.RelativeFolderPath))
-            {
-                project.FolderPath = project.RelativeFolderPath;
-            }
-
-            if (!string.IsNullOrWhiteSpace(project.RelativeTemplatePath))
-            {
-                project.TemplatePath = project.RelativeTemplatePath;
-            }
-
-            JsonStore.Save(filePath, project);
-        }
-        finally
-        {
-            project.FolderPath = absoluteFolderPath;
-            project.TemplatePath = absoluteTemplatePath;
-        }
+    public static void Update(Project project, string name, string number, string owner,
+        string contractManager, string generalContractor, string templateSourcePath,
+        string inspectorSignaturePath, string projectManagerSignaturePath)
+    {
+        project.Name = name.Trim();
+        project.Number = number.Trim();
+        project.Owner = owner.Trim();
+        project.ContractManager = contractManager.Trim();
+        project.GeneralContractor = generalContractor.Trim();
+        project.TemplatePath = CopyTemplate(project, templateSourcePath);
+        project.InspectorSignaturePath = StoreSignature(project, inspectorSignaturePath);
+        project.ProjectManagerSignaturePath = StoreSignature(project, projectManagerSignaturePath);
+        Save(project);
     }
 
     public static Project? Load(string projectJsonPathOrFolder)
@@ -154,9 +148,17 @@ public static class ProjectStore
         Directory.CreateDirectory(ProjectLayout.SignaturesFolder(project));
     }
 
-    public static void IncrementReportNumber(Project project)
+    public static void RefreshNextReportNumber(Project project)
     {
-        project.NextReportNumber++;
+        project.NextReportNumber = ReportStore.GetNextReportNumber(project);
+        Save(project);
+    }
+
+    public static void AdvanceReportNumber(Project project, int finalizedReportNumber)
+    {
+        project.NextReportNumber = Math.Max(
+            Math.Max(project.NextReportNumber, ReportStore.GetNextReportNumber(project)),
+            finalizedReportNumber + 1);
         Save(project);
     }
 
@@ -168,7 +170,44 @@ public static class ProjectStore
         }
 
         var target = Path.Combine(project.FolderPath, ProjectLayout.TemplateFileName);
+        if (string.Equals(Path.GetFullPath(templateSourcePath), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
+        {
+            return target;
+        }
+
         File.Copy(templateSourcePath, target, overwrite: true);
         return target;
+    }
+
+    private static Project ToPortableProject(Project project)
+    {
+        var folderPath = ".";
+        var templatePath = ToPortablePath(project.FolderPath, project.TemplatePath);
+
+        return new Project
+        {
+            Name = project.Name,
+            Number = project.Number,
+            Owner = project.Owner,
+            ContractManager = project.ContractManager,
+            GeneralContractor = project.GeneralContractor,
+            FolderPath = folderPath,
+            TemplatePath = templatePath,
+            InspectorSignaturePath = project.InspectorSignaturePath,
+            ProjectManagerSignaturePath = project.ProjectManagerSignaturePath,
+            NextReportNumber = project.NextReportNumber,
+            CreatedUtc = project.CreatedUtc
+        };
+    }
+
+    private static string ToPortablePath(string projectFolder, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        var relative = SignatureStore.RelativePath(projectFolder, path);
+        return relative ?? path;
     }
 }

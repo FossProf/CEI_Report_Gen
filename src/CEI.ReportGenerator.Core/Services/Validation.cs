@@ -71,6 +71,16 @@ public static class Validation
             if (string.IsNullOrWhiteSpace(report.Photos[i].SourcePath) || !File.Exists(report.Photos[i].SourcePath))
             {
                 errors.Add($"Photo {i + 1} source image file is missing.");
+                continue;
+            }
+
+            try
+            {
+                _ = ImagePartManager.GetContentType(report.Photos[i].SourcePath);
+            }
+            catch (InvalidOperationException ex)
+            {
+                errors.Add($"Photo {i + 1} is not a supported image. {ex.Message}");
             }
         }
 
