@@ -31,6 +31,8 @@ var keepWorkspace = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CE
 
 try
 {
+    // Baseline Regression Tests
+    // These checks define the v0.1 foundation contract and should not be removed.
     var photoDir = Path.Combine(workspace, "sample_photos");
     Directory.CreateDirectory(photoDir);
     ExtractTemplateMedia(templatePath, photoDir);

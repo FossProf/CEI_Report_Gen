@@ -10,6 +10,15 @@ project's `Reports` folder without requiring Microsoft Word.
 Project folders, reports, signatures, photos, previews, logs, and generated documents are
 runtime/user data and must not be committed to the repository.
 
+## Documentation
+
+- [Architecture](docs/Architecture.md)
+- [Development Guidelines](docs/DevelopmentGuidelines.md)
+- [Project Schema](docs/project-schema.md)
+- [Report Schema](docs/report-schema.md)
+- [Template Contract](docs/template-contract.md)
+- [Changelog](CHANGELOG.md)
+
 ## Requirements
 
 - Windows 10/11
