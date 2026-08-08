@@ -415,6 +415,8 @@ static void VerifyGeneratedDocument(string docxPath, int photoCount, List<string
     Assert(sdtBlocks.Count == 2, "both signature content controls preserved in output");
     Assert(sdtBlocks.All(b => b.Descendants<A.Blip>().Any(blip => mainPart.GetPartById(blip.Embed!) is ImagePart)),
         "each signature content control embeds an image");
+    Assert(sdtBlocks.All(b => b.Descendants<A.Blip>().Count() == 1),
+        "each signature content control contains exactly one signature drawing");
 
     AssertLogosUnchanged(templatePath, docxPath);
 

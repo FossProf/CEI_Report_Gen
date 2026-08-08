@@ -500,7 +500,7 @@ public static class TemplateFiller
 
         paragraph.RemoveAllChildren<Run>();
 
-        var labelText = string.IsNullOrEmpty(caption) ? $"Photo {photoNumber}" : $"Photo {photoNumber}: ";
+        var labelText = string.IsNullOrWhiteSpace(caption) ? $"Photo {photoNumber}" : $"Photo {photoNumber}: ";
         if (!string.IsNullOrEmpty(labelText))
         {
             var labelRun = new Run();
@@ -800,6 +800,14 @@ public static class TemplateFiller
         using (var stream = File.OpenRead(signaturePath))
         {
             newPart.FeedData(stream);
+        }
+
+        var drawingRuns = block.Descendants<Run>()
+            .Where(r => r.Descendants<A.Blip>().Any())
+            .ToList();
+        for (var i = 1; i < drawingRuns.Count; i++)
+        {
+            drawingRuns[i].Remove();
         }
 
         blip.Embed = newRelationshipId;
