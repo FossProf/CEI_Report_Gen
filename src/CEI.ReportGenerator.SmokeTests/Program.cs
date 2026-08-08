@@ -204,6 +204,70 @@ try
     var authoritativeSummary = ProjectDashboardSummaryBuilder.Build(mixedProject, ReportStore.LoadAllReports(mixedProject));
     Assert(authoritativeSummary.NextReportNumber == ReportStore.GetNextReportNumber(mixedProject), "next report display uses authoritative next-number logic");
 
+    Console.WriteLine("\n== Report draft factory ==");
+    var draftFactoryProject = ProjectStore.Create(
+        Path.Combine(workspace, "draft_factory"),
+        "Draft Factory",
+        "54",
+        "Owner",
+        "CM",
+        "GC",
+        readinessTemplatePath,
+        readinessPhotos[0],
+        readinessPhotos[1]);
+    for (var i = 1; i <= 16; i++)
+    {
+        ReportStore.SaveReport(draftFactoryProject, MakeReport(draftFactoryProject, i, 1, "Sunny", readinessPhotos));
+    }
+
+    draftFactoryProject.NextReportNumber = 4;
+    ProjectStore.Save(draftFactoryProject);
+
+    var blankDraft = ReportDraftFactory.CreateBlank(draftFactoryProject);
+    Assert(blankDraft.Number == 17, "CreateBlank uses authoritative next report number");
+    Assert(blankDraft.Date == DateTime.Today, "CreateBlank uses today's date");
+    Assert(blankDraft.Status == ReportStatus.Draft, "CreateBlank starts as draft");
+    Assert(blankDraft.Photos.Count == 0, "CreateBlank starts with empty photos");
+    Assert(string.IsNullOrWhiteSpace(blankDraft.OutputFileName), "CreateBlank clears output file name");
+
+    var finalSource = MakeReport(draftFactoryProject, 4, 2, "Cloudy", readinessPhotos);
+    finalSource.Status = ReportStatus.Final;
+    finalSource.OutputFileName = "Report_0004_Final.docx";
+    finalSource.CreatedUtc = new DateTime(2026, 8, 1, 12, 30, 0, DateTimeKind.Utc);
+
+    var duplicatedFromFinal = ReportDraftFactory.CreateFromExisting(draftFactoryProject, finalSource);
+    Assert(duplicatedFromFinal.Number == 17, "CreateFromExisting uses authoritative next report number instead of source number");
+    Assert(duplicatedFromFinal.Date == DateTime.Today, "CreateFromExisting uses today's date");
+    Assert(duplicatedFromFinal.Status == ReportStatus.Draft, "CreateFromExisting starts as draft");
+    Assert(duplicatedFromFinal.Locations == finalSource.Locations, "CreateFromExisting copies location");
+    Assert(duplicatedFromFinal.Inspectors == finalSource.Inspectors, "CreateFromExisting copies inspectors");
+    Assert(duplicatedFromFinal.PersonnelOnSite == finalSource.PersonnelOnSite, "CreateFromExisting copies personnel");
+    Assert(duplicatedFromFinal.DescriptionOfWork == finalSource.DescriptionOfWork, "CreateFromExisting copies description of work");
+    Assert(duplicatedFromFinal.DrawingsReviewed == finalSource.DrawingsReviewed, "CreateFromExisting copies drawings reviewed");
+    Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.Weather), "CreateFromExisting clears weather");
+    Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.Temperature), "CreateFromExisting clears temperature");
+    Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.Observations), "CreateFromExisting clears observations");
+    Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.NewDiscrepancies), "CreateFromExisting clears new discrepancies");
+    Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.PreviousDiscrepancies), "CreateFromExisting clears previous discrepancies");
+    Assert(duplicatedFromFinal.Photos.Count == 0, "CreateFromExisting starts with empty photos");
+    Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.OutputFileName), "CreateFromExisting clears output file name");
+    Assert(duplicatedFromFinal.CreatedUtc != finalSource.CreatedUtc, "CreateFromExisting assigns a new CreatedUtc");
+
+    duplicatedFromFinal.Locations = "Changed location";
+    duplicatedFromFinal.Inspectors = "Changed inspector";
+    duplicatedFromFinal.Photos.Add(new Photo { SourcePath = "new-photo.jpg", Caption = "new photo" });
+    Assert(finalSource.Locations != duplicatedFromFinal.Locations, "editing duplicated report does not change source location");
+    Assert(finalSource.Inspectors != duplicatedFromFinal.Inspectors, "editing duplicated report does not change source inspectors");
+    Assert(finalSource.Photos.Count == 2, "editing duplicated report does not change source photos");
+    Assert(finalSource.OutputFileName == "Report_0004_Final.docx", "editing duplicated report does not change source output file");
+    Assert(finalSource.Status == ReportStatus.Final, "editing duplicated report does not change final source status");
+
+    var draftSource = MakeReport(draftFactoryProject, 7, 1, "Rain", readinessPhotos);
+    draftSource.Status = ReportStatus.Draft;
+    var duplicatedFromDraft = ReportDraftFactory.CreateFromExisting(draftFactoryProject, draftSource);
+    Assert(duplicatedFromDraft.Number == 17, "draft source also duplicates to authoritative next report number");
+    Assert(duplicatedFromDraft.Status == ReportStatus.Draft, "draft source duplication still starts as draft");
+
     // Baseline Regression Tests
     // These checks define the v0.1 foundation contract and should not be removed.
     var photoDir = Path.Combine(workspace, "sample_photos");

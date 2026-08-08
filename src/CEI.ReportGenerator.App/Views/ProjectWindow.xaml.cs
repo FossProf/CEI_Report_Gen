@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
@@ -80,6 +81,14 @@ public partial class ProjectWindow : Window
         OpenSelectedReport();
     }
 
+    private void ReportsGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (FindVisualAncestor<DataGridRow>(e.OriginalSource as DependencyObject) is { Item: ReportListItem item })
+        {
+            ReportsGrid.SelectedItem = item;
+        }
+    }
+
     private void ReportFolderButton_Click(object sender, RoutedEventArgs e)
     {
         OpenSelectedReportFolder();
@@ -143,6 +152,16 @@ public partial class ProjectWindow : Window
     private void OpenSelectedReportFolderMenuItem_Click(object sender, RoutedEventArgs e)
     {
         OpenSelectedReportFolder();
+    }
+
+    private void NewReportFromSelectedMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        CreateNewReportFromSelected();
+    }
+
+    private void NewReportFromThisReportContextMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        CreateNewReportFromSelected();
     }
 
     private void ApplicationSettingsMenuItem_Click(object sender, RoutedEventArgs e)
@@ -249,12 +268,34 @@ public partial class ProjectWindow : Window
 
     private void CreateNewReport()
     {
-        var nextNumber = ProjectStore.SynchronizeNextReportNumber(_project);
-        var report = new InspectionReport
+        var report = ReportDraftFactory.CreateBlank(_project);
+
+        var editor = new ReportEditorWindow(_project, report, isNew: true)
         {
-            Number = nextNumber,
-            Date = DateTime.Today
+            Owner = this
         };
+        if (editor.ShowDialog() == true)
+        {
+            RefreshDashboard();
+        }
+    }
+
+    private void CreateNewReportFromSelected()
+    {
+        if (GetSelectedReportItem() is not { } item)
+        {
+            return;
+        }
+
+        var report = ReportDraftFactory.CreateFromExisting(_project, item.Report);
+        var confirmation = new NewReportFromExistingConfirmationWindow(item.Report, report)
+        {
+            Owner = this
+        };
+        if (confirmation.ShowDialog() != true)
+        {
+            return;
+        }
 
         var editor = new ReportEditorWindow(_project, report, isNew: true)
         {
@@ -394,6 +435,8 @@ public partial class ProjectWindow : Window
         ReportFolderButton.IsEnabled = hasSelection;
         OpenSelectedReportMenuItem.IsEnabled = hasSelection;
         OpenSelectedReportFolderMenuItem.IsEnabled = hasSelection;
+        NewReportFromSelectedMenuItem.IsEnabled = hasSelection;
+        NewReportFromThisReportContextMenuItem.IsEnabled = hasSelection;
     }
 
     private void CloseProject()
@@ -433,6 +476,21 @@ public partial class ProjectWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
+    }
+
+    private static T? FindVisualAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     public sealed record ReportListItem(InspectionReport Report)

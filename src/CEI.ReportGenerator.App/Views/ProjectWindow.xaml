@@ -25,6 +25,8 @@
             <MenuItem Header="_Report">
                 <MenuItem x:Name="OpenSelectedReportMenuItem" Header="_Open Selected Report" Click="OpenSelectedReportMenuItem_Click"/>
                 <MenuItem x:Name="OpenSelectedReportFolderMenuItem" Header="Open Selected Report _Folder" Click="OpenSelectedReportFolderMenuItem_Click"/>
+                <Separator/>
+                <MenuItem x:Name="NewReportFromSelectedMenuItem" Header="_New Report from Selected..." Click="NewReportFromSelectedMenuItem_Click"/>
             </MenuItem>
             <MenuItem Header="_Tools">
                 <MenuItem Header="_Application Settings..." InputGestureText="Ctrl+," Click="ApplicationSettingsMenuItem_Click"/>
@@ -158,7 +160,15 @@
                               IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
                               SelectionMode="Single" HeadersVisibility="Column"
                               MouseDoubleClick="ReportsGrid_MouseDoubleClick"
+                              PreviewMouseRightButtonDown="ReportsGrid_PreviewMouseRightButtonDown"
                               SelectionChanged="ReportsGrid_SelectionChanged">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem x:Name="NewReportFromThisReportContextMenuItem"
+                                          Header="New Report from This Report..."
+                                          Click="NewReportFromThisReportContextMenuItem_Click"/>
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Report #" Binding="{Binding Number}" Width="90"/>
                             <DataGridTextColumn Header="Date" Binding="{Binding DateText}" Width="120"/>
