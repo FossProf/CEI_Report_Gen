@@ -8,6 +8,14 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>CEI.ReportGenerator.App</RootNamespace>
     <AssemblyName>CEI.ReportGenerator.App</AssemblyName>
+    <Product>CEI Report Generator</Product>
+    <AssemblyTitle>CEI Report Generator</AssemblyTitle>
+    <Company>Cornerstone Engineering / CEI</Company>
+    <Version>0.1.0</Version>
+    <FileVersion>0.1.0.0</FileVersion>
+    <InformationalVersion>0.1.0-alpha</InformationalVersion>
+    <Description>Windows desktop application for creating standardized CEI inspection reports.</Description>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +25,7 @@
   <ItemGroup>
     <None Include="..\..\templates\CEI_Base_Template_Refined.docx" Link="Templates\CEI_Base_Template_Refined.docx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 

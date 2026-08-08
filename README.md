@@ -17,6 +17,7 @@ runtime/user data and must not be committed to the repository.
 - [Project Schema](docs/project-schema.md)
 - [Report Schema](docs/report-schema.md)
 - [Template Contract](docs/template-contract.md)
+- [Deployment](docs/Deployment.md)
 - [Changelog](CHANGELOG.md)
 
 ## Requirements
@@ -30,6 +31,19 @@ runtime/user data and must not be committed to the repository.
 dotnet build CEI_Report_Gen.sln
 dotnet run --project src/CEI.ReportGenerator.App
 ```
+
+## Building a Release
+
+```powershell
+pwsh ./scripts/publish-release.ps1
+pwsh ./scripts/build-installer.ps1
+```
+
+Publish output: `artifacts/publish/win-x64/`
+
+Installer output: `artifacts/installer/CEI_Report_Generator_0.1.0-alpha_x64.msi`
+
+Deployment guidance: [Deployment](docs/Deployment.md)
 
 ## How it works
 

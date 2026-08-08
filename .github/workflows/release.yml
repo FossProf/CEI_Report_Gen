@@ -1,0 +1,46 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore CEI_Report_Gen.sln
+
+      - name: Build Release
+        run: dotnet build CEI_Report_Gen.sln --configuration Release --no-restore
+
+      - name: Smoke Tests
+        run: dotnet src/CEI.ReportGenerator.SmokeTests/bin/Release/net8.0-windows/CEI.ReportGenerator.SmokeTests.dll
+
+      - name: Publish Release
+        shell: pwsh
+        run: ./scripts/publish-release.ps1
+
+      - name: Build Installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1
+
+      - name: Upload Published App
+        uses: actions/upload-artifact@v4
+        with:
+          name: CEI_Report_Generator_publish_win-x64
+          path: artifacts/publish/win-x64
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: CEI_Report_Generator_0.1.0-alpha_x64
+          path: artifacts/installer/CEI_Report_Generator_0.1.0-alpha_x64.msi

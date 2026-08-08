@@ -24,4 +24,4 @@ jobs:
         run: dotnet build CEI_Report_Gen.sln --configuration Release --no-restore
 
       - name: Smoke Tests
-        run: dotnet run --project src/CEI.ReportGenerator.SmokeTests/CEI.ReportGenerator.SmokeTests.csproj --configuration Release --no-build
+        run: dotnet src/CEI.ReportGenerator.SmokeTests/bin/Release/net8.0-windows/CEI.ReportGenerator.SmokeTests.dll
