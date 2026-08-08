@@ -28,6 +28,16 @@ public partial class ProjectSetupWindow : Window
         }
         else
         {
+            FolderBox.Text = App.CurrentApp.Settings.DefaultProjectsFolder;
+            try
+            {
+                ApplicationSettingsValidator.ValidateAndEnsureFolder(FolderBox.Text);
+            }
+            catch
+            {
+                // Keep the configured path visible even if it cannot be created yet.
+            }
+
             var bundledTemplate = Path.Combine(AppContext.BaseDirectory, "Templates", "CEI_Base_Template_Refined.docx");
             if (File.Exists(bundledTemplate))
             {
@@ -56,7 +66,8 @@ public partial class ProjectSetupWindow : Window
     {
         var dialog = new OpenFolderDialog
         {
-            Title = "Select the folder for the new project"
+            Title = "Select the folder for the new project",
+            InitialDirectory = GetExistingParent(ProjectFolderPath)
         };
         if (dialog.ShowDialog(this) == true)
         {
@@ -254,7 +265,23 @@ public partial class ProjectSetupWindow : Window
 
     private void ShowErrors(IEnumerable<string> errors)
     {
-        ErrorText.Text = string.Join(Environment.NewLine, errors.Select(e => "• " + e));
+        ErrorText.Text = string.Join(Environment.NewLine, errors.Select(e => "* " + e));
         ErrorText.Visibility = Visibility.Visible;
+    }
+
+    private static string GetExistingParent(string path)
+    {
+        var current = path;
+        while (!string.IsNullOrWhiteSpace(current))
+        {
+            if (Directory.Exists(current))
+            {
+                return current;
+            }
+
+            current = Path.GetDirectoryName(current) ?? string.Empty;
+        }
+
+        return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     }
 }

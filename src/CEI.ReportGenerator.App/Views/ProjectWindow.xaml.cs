@@ -3,7 +3,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using CEI.ReportGenerator.App;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
@@ -29,7 +28,7 @@ public partial class ProjectWindow : Window
     {
         ProjectTitle.Text = _project.Name;
         ProjectDetails.Text =
-            $"#{_project.Number}  •  Owner: {_project.Owner}  •  Contract Manager: {_project.ContractManager}  •  General Contractor: {_project.GeneralContractor}";
+            $"#{_project.Number}  *  Owner: {_project.Owner}  *  Contract Manager: {_project.ContractManager}  *  General Contractor: {_project.GeneralContractor}";
         Title = $"{_project.Name} - CEI Report Generator";
     }
 
@@ -69,6 +68,13 @@ public partial class ProjectWindow : Window
         if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.S)
         {
             OpenProjectSettings();
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.OemComma)
+        {
+            OpenApplicationSettings();
             e.Handled = true;
         }
     }
@@ -156,6 +162,11 @@ public partial class ProjectWindow : Window
     private void OpenSelectedReportFolderMenuItem_Click(object sender, RoutedEventArgs e)
     {
         OpenSelectedReportFolder();
+    }
+
+    private void ApplicationSettingsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenApplicationSettings();
     }
 
     private void AboutMenuItem_Click(object sender, RoutedEventArgs e)
@@ -309,6 +320,19 @@ public partial class ProjectWindow : Window
     {
         Owner?.Activate();
         Close();
+    }
+
+    private void OpenApplicationSettings()
+    {
+        var app = App.CurrentApp;
+        var window = new ApplicationSettingsWindow(app.Settings)
+        {
+            Owner = this
+        };
+        if (window.ShowDialog() == true && window.SavedSettings is not null)
+        {
+            app.ApplySettings(window.SavedSettings);
+        }
     }
 
     private static void OpenInExplorer(string path)

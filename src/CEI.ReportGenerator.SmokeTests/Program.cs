@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using CEI.ReportGenerator.App;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
@@ -27,10 +28,62 @@ var workspace = Path.Combine(Path.GetTempPath(), "cei_smoke_" + Guid.NewGuid().T
 Directory.CreateDirectory(workspace);
 Console.WriteLine($"Workspace: {workspace}");
 
-var keepWorkspace = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CEI_KEEP_WORKSPACE"));
+    var keepWorkspace = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CEI_KEEP_WORKSPACE"));
 
 try
 {
+    Console.WriteLine("\n== Application settings ==");
+    var settingsPath = Path.Combine(workspace, "settings", "settings.json");
+    var settingsStore = new ApplicationSettingsStore(settingsPath);
+    var defaultSettings = settingsStore.Load();
+    Assert(defaultSettings.DefaultProjectsFolder == Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "CEI Report Generator", "Projects"),
+        "no settings file returns default projects folder");
+    Assert(defaultSettings.RecentProjectLimit == 10, "no settings file returns default recent project limit");
+    Assert(defaultSettings.ReopenLastProjectOnStartup == false, "no settings file returns default startup reopen value");
+    Assert(defaultSettings.LastOpenedProjectPath is null, "no settings file returns null last project path");
+
+    var roundTripSettings = defaultSettings.Clone();
+    roundTripSettings.DefaultProjectsFolder = Path.Combine(workspace, "configured_projects");
+    roundTripSettings.RecentProjectLimit = 7;
+    roundTripSettings.ReopenLastProjectOnStartup = true;
+    roundTripSettings.LastOpenedProjectPath = @"C:\Projects\Demo";
+    settingsStore.Save(roundTripSettings);
+    var reloadedSettings = settingsStore.Load();
+    Assert(reloadedSettings.DefaultProjectsFolder == roundTripSettings.DefaultProjectsFolder, "settings round trip preserves default folder");
+    Assert(reloadedSettings.RecentProjectLimit == 7, "settings round trip preserves recent project limit");
+    Assert(reloadedSettings.ReopenLastProjectOnStartup, "settings round trip preserves startup reopen");
+    Assert(reloadedSettings.LastOpenedProjectPath == @"C:\Projects\Demo", "last opened project path persists");
+    Assert(Directory.Exists(roundTripSettings.DefaultProjectsFolder), "valid default folder persists and exists");
+
+    File.WriteAllText(settingsPath, "{ malformed json");
+    var malformedSettings = settingsStore.Load();
+    Assert(malformedSettings.DefaultProjectsFolder == ApplicationSettings.CreateDefaults().DefaultProjectsFolder, "malformed JSON returns default projects folder safely");
+    Assert(malformedSettings.RecentProjectLimit == 10, "malformed JSON returns default recent project limit safely");
+
+    var invalidLimitSettings = ApplicationSettings.CreateDefaults();
+    invalidLimitSettings.RecentProjectLimit = 0;
+    Assert(ApplicationSettingsValidator.Validate(invalidLimitSettings).Any(e => e.Contains("between 1 and 25", StringComparison.OrdinalIgnoreCase)),
+        "recent project limit validates 1-25");
+
+    var invalidFolderSettings = ApplicationSettings.CreateDefaults();
+    invalidFolderSettings.DefaultProjectsFolder = string.Empty;
+    Assert(ApplicationSettingsValidator.Validate(invalidFolderSettings).Any(e => e.Contains("required", StringComparison.OrdinalIgnoreCase)),
+        "invalid default folder rejected");
+
+    var resetSettings = settingsStore.ResetToDefaults();
+    Assert(resetSettings.DefaultProjectsFolder == ApplicationSettings.CreateDefaults().DefaultProjectsFolder, "reset-to-default values restore default folder");
+    Assert(resetSettings.RecentProjectLimit == 10, "reset-to-default values restore recent project limit");
+    Assert(resetSettings.ReopenLastProjectOnStartup == false, "reset-to-default values restore startup reopen");
+    Assert(resetSettings.LastOpenedProjectPath is null, "reset-to-default values restore null last project path");
+
+    var missingStartupSettings = ApplicationSettings.CreateDefaults();
+    missingStartupSettings.ReopenLastProjectOnStartup = true;
+    missingStartupSettings.LastOpenedProjectPath = Path.Combine(workspace, "missing_project");
+    settingsStore.Save(missingStartupSettings);
+    var startupPath = ApplicationSettingsBehavior.GetStartupReopenProjectPath(missingStartupSettings, settingsStore);
+    Assert(startupPath is null, "startup reopen ignores missing path safely");
+    Assert(settingsStore.Load().LastOpenedProjectPath is null, "missing startup reopen path is cleared safely");
+
     // Baseline Regression Tests
     // These checks define the v0.1 foundation contract and should not be removed.
     var photoDir = Path.Combine(workspace, "sample_photos");

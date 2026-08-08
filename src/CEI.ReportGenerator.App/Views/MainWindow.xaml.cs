@@ -10,6 +10,7 @@ namespace CEI.ReportGenerator.App.Views;
 public partial class MainWindow : Window
 {
     private List<RecentProjectEntry> _recentProjects = new();
+    private bool _startupReopenAttempted;
 
     public MainWindow()
     {
@@ -19,6 +20,7 @@ public partial class MainWindow : Window
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         RefreshRecentProjects();
+        TryReopenLastProjectOnStartup();
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -34,12 +36,19 @@ public partial class MainWindow : Window
         {
             OpenProject();
             e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.OemComma)
+        {
+            OpenApplicationSettings();
+            e.Handled = true;
         }
     }
 
     private void RefreshRecentProjects()
     {
-        _recentProjects = RecentProjectStore.Load().Take(10).ToList();
+        _recentProjects = RecentProjectStore.Load(App.CurrentApp.Settings.RecentProjectLimit);
         RecentList.ItemsSource = _recentProjects;
         BuildRecentProjectsMenu();
         UpdateRecentSelectionState();
@@ -129,6 +138,11 @@ public partial class MainWindow : Window
         OpenProject();
     }
 
+    private void ApplicationSettingsMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenApplicationSettings();
+    }
+
     private void RecentProjectMenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { Tag: RecentProjectEntry entry })
@@ -211,12 +225,52 @@ public partial class MainWindow : Window
 
     private void OpenProject(Project project)
     {
-        RecentProjectStore.Record(project.Name, project.FolderPath);
+        var app = App.CurrentApp;
+        RecentProjectStore.Record(project.Name, project.FolderPath, app.Settings.RecentProjectLimit);
+        app.Settings.LastOpenedProjectPath = project.FolderPath;
+        app.SettingsStore.Save(app.Settings);
+
         var window = new ProjectWindow(project)
         {
             Owner = this
         };
         window.ShowDialog();
         RefreshRecentProjects();
+    }
+
+    private void OpenApplicationSettings()
+    {
+        var app = App.CurrentApp;
+        var window = new ApplicationSettingsWindow(app.Settings)
+        {
+            Owner = this
+        };
+        if (window.ShowDialog() == true && window.SavedSettings is not null)
+        {
+            app.ApplySettings(window.SavedSettings);
+            RefreshRecentProjects();
+        }
+    }
+
+    private void TryReopenLastProjectOnStartup()
+    {
+        if (_startupReopenAttempted)
+        {
+            return;
+        }
+
+        _startupReopenAttempted = true;
+        var app = App.CurrentApp;
+        var projectPath = ApplicationSettingsBehavior.GetStartupReopenProjectPath(app.Settings, app.SettingsStore);
+        if (string.IsNullOrWhiteSpace(projectPath))
+        {
+            return;
+        }
+
+        var project = ProjectStore.Load(projectPath);
+        if (project is not null)
+        {
+            OpenProject(project);
+        }
     }
 }

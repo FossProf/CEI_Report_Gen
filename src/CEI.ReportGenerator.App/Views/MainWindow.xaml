@@ -15,6 +15,9 @@
                 <Separator/>
                 <MenuItem Header="E_xit" Click="ExitMenuItem_Click"/>
             </MenuItem>
+            <MenuItem Header="_Tools">
+                <MenuItem Header="_Application Settings..." InputGestureText="Ctrl+," Click="ApplicationSettingsMenuItem_Click"/>
+            </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_About" Click="AboutMenuItem_Click"/>
             </MenuItem>

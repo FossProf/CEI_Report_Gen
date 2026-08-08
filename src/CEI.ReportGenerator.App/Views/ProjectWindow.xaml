@@ -26,6 +26,9 @@
                 <MenuItem x:Name="OpenSelectedReportMenuItem" Header="_Open Selected Report" Click="OpenSelectedReportMenuItem_Click"/>
                 <MenuItem x:Name="OpenSelectedReportFolderMenuItem" Header="Open Selected Report _Folder" Click="OpenSelectedReportFolderMenuItem_Click"/>
             </MenuItem>
+            <MenuItem Header="_Tools">
+                <MenuItem Header="_Application Settings..." InputGestureText="Ctrl+," Click="ApplicationSettingsMenuItem_Click"/>
+            </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem Header="_About" Click="AboutMenuItem_Click"/>
             </MenuItem>

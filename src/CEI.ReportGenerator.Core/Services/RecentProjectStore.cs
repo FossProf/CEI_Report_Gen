@@ -11,22 +11,20 @@ public sealed class RecentProjectEntry
 
 public static class RecentProjectStore
 {
-    private const int MaxEntries = 10;
-
     private static string FilePath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "CEIReportGenerator",
         "recent-projects.json");
 
-    public static void Record(string name, string folderPath)
+    public static void Record(string name, string folderPath, int maxEntries = 10)
     {
         var entries = Load().Where(e => !string.Equals(e.FolderPath, folderPath, StringComparison.OrdinalIgnoreCase)).ToList();
         entries.Insert(0, new RecentProjectEntry { Name = name, FolderPath = folderPath, LastOpenedUtc = DateTime.UtcNow });
-        entries = entries.Take(MaxEntries).ToList();
+        entries = entries.Take(Math.Clamp(maxEntries, 1, 25)).ToList();
         JsonStore.Save(FilePath, entries);
     }
 
-    public static List<RecentProjectEntry> Load()
+    public static List<RecentProjectEntry> Load(int? maxEntries = null)
     {
         if (!JsonStore.TryLoad<List<RecentProjectEntry>>(FilePath, out var loaded, out _))
         {
@@ -42,6 +40,11 @@ public static class RecentProjectStore
         if (valid.Count != entries.Count)
         {
             JsonStore.Save(FilePath, valid);
+        }
+
+        if (maxEntries is not null)
+        {
+            valid = valid.Take(Math.Clamp(maxEntries.Value, 1, 25)).ToList();
         }
 
         return valid;
