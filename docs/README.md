@@ -34,5 +34,6 @@ This folder is the primary documentation suite for the current SPINgen baseline.
 
 ## Change History
 
+- [Release 0.3.1-alpha](releases/0.3.1-alpha.md)
 - [Documentation Changelog](Changelog.md)
 - [Repository Changelog](../CHANGELOG.md)

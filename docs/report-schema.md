@@ -123,7 +123,7 @@ Each photo object contains:
   Report may be edited, saved, and previewed.
 
 - `Final`
-  Report has a final DOCX and is treated as immutable for finalization purposes in the `0.3.0-alpha` baseline.
+  Report has a final DOCX and is treated as immutable for finalization purposes in the `0.3.1-alpha` baseline.
 
 ## Generation Lifecycle
 

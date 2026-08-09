@@ -29,6 +29,7 @@ runtime/user data and must not be committed to the repository.
 - [Report Search Contract](docs/report-search.md)
 - [Deployment](docs/Deployment.md)
 - [Release Guide](docs/ReleaseGuide.md)
+- [Release 0.3.1-alpha](docs/releases/0.3.1-alpha.md)
 - [Troubleshooting](docs/Troubleshooting.md)
 - [Documentation Changelog](docs/Changelog.md)
 - [Repository Changelog](CHANGELOG.md)
@@ -53,7 +54,7 @@ dotnet run --project src/CEI.ReportGenerator.App
 
 Publish output: `artifacts/publish/win-x64/`
 
-Installer output: `artifacts/installer/SPINgen_0.3.0-alpha_x64.msi`
+Installer output: `artifacts/installer/SPINgen_0.3.1-alpha_x64.msi`
 
 Release output: `artifacts/release/`
 

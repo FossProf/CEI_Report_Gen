@@ -1,6 +1,6 @@
 # Report Search
 
-This document defines the current search contract for the `0.3.0-alpha` SPINgen baseline.
+This document defines the current search contract for the `0.3.1-alpha` SPINgen baseline.
 
 ## Search Scope
 

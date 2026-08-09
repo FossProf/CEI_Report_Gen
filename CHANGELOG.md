@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.1-alpha - Documentation and Release Refresh
+
+### Documentation
+
+- initial SPINgen documentation suite added
+- quick-start, user, administration, lifecycle, search, release, and troubleshooting guides added
+- developer architecture and template-contract references expanded
+- documentation index added to the root README
+
+### Process
+
+- documentation-is-code policy established
+- documentation updates are now part of the definition of done for user-visible changes
+
+### Release
+
+- release metadata advanced to `0.3.1-alpha`
+- installer and release output naming updated for the new checkpoint
+
 ## 0.3.0-alpha - Search & Workspace Baseline
 
 ### Report Management
