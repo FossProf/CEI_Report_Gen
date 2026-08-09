@@ -44,6 +44,15 @@ Changing one requires updating:
 - regression tests
 - documentation
 
+## Rule 7
+
+Documentation is code.
+
+- Documentation updates are part of the definition of done for feature work.
+- Any user-visible feature, workflow, contract, or release-process change should update the relevant docs in the same change set.
+- At minimum, contributors should review the affected user guide, developer guide, schema/contract docs, README links, and changelog entries before considering work complete.
+- If behavior changed but no documentation changed, that should be treated as incomplete work unless the change is strictly internal and non-observable.
+
 ## Protected Foundation Areas
 
 Future work should not modify these baseline systems unless fixing bugs or intentionally changing a documented contract:
