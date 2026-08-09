@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="..\..\assets\CEI_Cornerstone_Logo_No_Tagline_Transparent.png"
+              Link="Assets\Brand\CEI_Cornerstone_Logo_No_Tagline_Transparent.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\..\templates\CEI_Base_Template_Refined.docx" Link="Templates\CEI_Base_Template_Refined.docx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

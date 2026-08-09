@@ -174,8 +174,9 @@ Icons are support elements, not decorative focal points.
 
 ## Logo Usage
 
-This slice does not depend on a standalone Cornerstone logo file.
+The main shell now uses the approved Cornerstone lockup sourced from the repository-level [assets folder](/C:/Potential%20Projects/CEI%20Tools/CEI_Report_Gen/assets).
 
-- The app icon asset remains in use
+- `CEI_Cornerstone_Logo_No_Tagline_Transparent.png` is linked into the WPF app as a packaged resource and used in the main window header
+- The app icon asset remains in use for the executable and window icon
 - No logo is extracted from the DOCX template at runtime
-- If an approved standalone logo is added later, it can be introduced without changing the theme architecture
+- Branding remains confined to shell/header presentation so core generation workflows stay untouched
