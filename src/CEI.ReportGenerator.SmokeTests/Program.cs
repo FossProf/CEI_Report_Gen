@@ -653,13 +653,19 @@ try
     Assert(!spinFileNameInfo.FileName.Contains("SPIN SPIN", StringComparison.OrdinalIgnoreCase), "final file name never duplicates SPIN");
     Assert(!spinFileNameInfo.FileName.Contains("#0216", StringComparison.Ordinal), "final file name never pads the visible report number");
 
+    var crispinProject = ProjectStore.Create(
+        Path.Combine(workspace, "crispin_naming_project"), "Crispin Structural Repairs", "92", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var crispinFileNameInfo = ProjectLayout.BuildFinalReportFileNameInfo(crispinProject, MakeReport(crispinProject, 216, 1, "Sunny", photoFiles));
+    Assert(crispinFileNameInfo.FileName == "2026-08-05 Crispin Structural Repairs SPIN Report #216.docx", "project names ending with Crispin still keep the inserted SPIN word");
+
     var sanitizedNamingProject = ProjectStore.Create(
         Path.Combine(workspace, "sanitized_naming_project"), "CMF: Structural/Repairs?", "91", "Owner", "CM", "GC",
         templatePath, photoFiles[0], photoFiles[1]);
     var sanitizedFileNameInfo = ProjectLayout.BuildFinalReportFileNameInfo(sanitizedNamingProject, MakeReport(sanitizedNamingProject, 12, 1, "Sunny", photoFiles));
     Assert(sanitizedFileNameInfo.FileName == "2026-08-05 CMF_ Structural_Repairs_ SPIN Report #12.docx", "final file name still sanitizes invalid file-name characters");
 
-    Console.WriteLine("\n== Report deletion removes only the selected report data ==");
+    Console.WriteLine("\n== Report deletion is atomic and removes only the selected report data ==");
     var deleteProject = ProjectStore.Create(
         Path.Combine(workspace, "delete_project"), "Delete Project", "89", "Owner", "CM", "GC",
         templatePath, photoFiles[0], photoFiles[1]);
@@ -696,7 +702,27 @@ try
     Assert(Directory.Exists(ProjectLayout.ReportFolder(deleteProject, 214)), "other draft report folder exists before deletion");
     Assert(Directory.Exists(ProjectLayout.ReportFolder(deleteProject, 215)), "other final report folder exists before deletion");
 
-    Assert(ReportStore.DeleteReport(deleteProject, 216), "delete report returns true when the report folder exists");
+    string? renamedSource = null;
+    string? renamedDestination = null;
+    ReportStore.RenameObserverForTesting = (source, destination) =>
+    {
+        renamedSource = source;
+        renamedDestination = destination;
+        Assert(Directory.Exists(source), "canonical report folder still exists immediately before rename");
+    };
+    try
+    {
+        Assert(ReportStore.DeleteReport(deleteProject, 216) == ReportStore.DeleteReportStatus.Deleted, "delete report returns deleted when the report folder exists");
+    }
+    finally
+    {
+        ReportStore.RenameObserverForTesting = null;
+    }
+
+    Assert(renamedSource == report216Folder, "delete report renames the canonical report folder before deletion");
+    Assert(!string.IsNullOrWhiteSpace(renamedDestination), "delete report uses a temporary deleting folder");
+    Assert(Path.GetFileName(renamedDestination!).StartsWith(".0216.deleting.", StringComparison.OrdinalIgnoreCase), "temporary deleting folder stays inside Reports with the expected naming pattern");
+    Assert(!Directory.Exists(renamedDestination), "temporary deleting folder is removed after successful recursive deletion");
     Assert(!Directory.Exists(report216Folder), "delete report removes the selected report folder");
     Assert(!File.Exists(report216Json), "delete report removes the selected report.json");
     Assert(!Directory.Exists(report216Photos), "delete report removes the selected report photos folder");
@@ -720,7 +746,61 @@ try
     Assert(deleteLoadResult.Reports.Any(report => report.Number == 214), "remaining draft report still loads after deletion");
     Assert(deleteLoadResult.Reports.Any(report => report.Number == 215), "remaining final report still loads after deletion");
     Assert(ReportStore.GetNextReportNumber(deleteReloadedProject) == 217, "authoritative next report number remains 217 after deleting report 216");
-    Assert(!ReportStore.DeleteReport(deleteReloadedProject, 216), "delete report returns false when the report folder is already gone");
+    Assert(ReportStore.DeleteReport(deleteReloadedProject, 216) == ReportStore.DeleteReportStatus.NotFound, "delete report returns not found when the report folder is already gone");
+
+    Console.WriteLine("\n== Failed report rename leaves the report untouched ==");
+    var renameFailureProject = ProjectStore.Create(
+        Path.Combine(workspace, "rename_failure_project"), "Rename Failure", "93", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var renameFailureReport = MakeReport(renameFailureProject, 12, 1, "Sunny", photoFiles);
+    ReportGenerator.SaveDraft(renameFailureProject, renameFailureReport);
+    var renameFailureFolder = ProjectLayout.ReportFolder(renameFailureProject, renameFailureReport.Number);
+    var renameFailureJson = ProjectLayout.ReportFilePath(renameFailureProject, renameFailureReport.Number);
+    ReportStore.RenameFailureHookForTesting = (_, _) => new IOException("Simulated locked file during rename.");
+    try
+    {
+        Assert(ReportStore.DeleteReport(renameFailureProject, renameFailureReport.Number) == ReportStore.DeleteReportStatus.InUse, "locked rename scenario returns in-use");
+    }
+    finally
+    {
+        ReportStore.RenameFailureHookForTesting = null;
+    }
+
+    Assert(Directory.Exists(renameFailureFolder), "failed rename leaves the canonical report folder intact");
+    Assert(File.Exists(renameFailureJson), "failed rename leaves report.json intact");
+    Assert(ReportStore.LoadAllReports(renameFailureProject).Reports.Count == 1, "dashboard reload still sees the untouched report after rename failure");
+    Assert(ProjectStore.Load(renameFailureProject.FolderPath)!.NextReportNumber == renameFailureProject.NextReportNumber, "failed rename does not change next report number");
+    Assert(!Directory.EnumerateDirectories(ProjectLayout.ReportsFolder(renameFailureProject)).Any(path => Path.GetFileName(path).Contains(".deleting.", StringComparison.OrdinalIgnoreCase)),
+        "failed rename leaves no abandoned deleting folder");
+
+    Console.WriteLine("\n== Abandoned deleting folders are cleaned on next load ==");
+    var cleanupProject = ProjectStore.Create(
+        Path.Combine(workspace, "cleanup_project"), "Cleanup Project", "94", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var cleanupReport = MakeReport(cleanupProject, 33, 1, "Sunny", photoFiles);
+    ReportGenerator.SaveDraft(cleanupProject, cleanupReport);
+    string? abandonedDeletingFolder = null;
+    ReportStore.RenameObserverForTesting = (_, destination) => abandonedDeletingFolder = destination;
+    ReportStore.DeleteFailureHookForTesting = _ => new IOException("Simulated delete failure after rename.");
+    try
+    {
+        ExpectActionFailure(
+            () => ReportStore.DeleteReport(cleanupProject, cleanupReport.Number),
+            message => message.Contains("Simulated delete failure after rename.", StringComparison.OrdinalIgnoreCase));
+    }
+    finally
+    {
+        ReportStore.RenameObserverForTesting = null;
+        ReportStore.DeleteFailureHookForTesting = null;
+    }
+
+    Assert(!Directory.Exists(ProjectLayout.ReportFolder(cleanupProject, cleanupReport.Number)), "after rename-plus-delete failure the canonical report folder is already gone");
+    Assert(!string.IsNullOrWhiteSpace(abandonedDeletingFolder), "delete failure after rename leaves an abandoned deleting folder");
+    Assert(Directory.Exists(abandonedDeletingFolder!), "abandoned deleting folder remains for future cleanup");
+    var cleanupLoadResult = ReportStore.LoadAllReports(cleanupProject);
+    Assert(cleanupLoadResult.Reports.Count == 0, "cleanup removes abandoned deleting folders before dashboard reload");
+    Assert(!Directory.Exists(abandonedDeletingFolder!), "abandoned deleting folder is removed during the next cleanup pass");
+    Assert(ProjectStore.Load(cleanupProject.FolderPath)!.NextReportNumber == cleanupProject.NextReportNumber, "cleanup of abandoned deleting folders does not change next report number");
 
     Console.WriteLine("\n== Finalization rollback preserves preview and state ==");
     var rollbackProject = ProjectStore.Create(

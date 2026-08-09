@@ -4,14 +4,29 @@ namespace CEI.ReportGenerator.Core.Services;
 
 public static class ReportStore
 {
+    public enum DeleteReportStatus
+    {
+        Deleted,
+        NotFound,
+        InUse
+    }
+
     public sealed record ReportLoadIssue(string Path, string Message);
 
     public sealed record ReportLoadResult(
         IReadOnlyList<InspectionReport> Reports,
         IReadOnlyList<ReportLoadIssue> Issues);
 
+    public static Func<string, string, Exception?>? RenameFailureHookForTesting { get; set; }
+
+    public static Func<string, Exception?>? DeleteFailureHookForTesting { get; set; }
+
+    public static Action<string, string>? RenameObserverForTesting { get; set; }
+
     public static void SaveReport(Project project, InspectionReport report)
     {
+        CleanupAbandonedDeleteFolders(project);
+
         var folder = ProjectLayout.ReportFolder(project, report.Number);
         Directory.CreateDirectory(folder);
 
@@ -139,10 +154,14 @@ public static class ReportStore
         => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data)).ToLowerInvariant();
 
     public static InspectionReport? LoadReport(Project project, int reportNumber)
-        => JsonStore.Load<InspectionReport>(ProjectLayout.ReportFilePath(project, reportNumber));
+    {
+        CleanupAbandonedDeleteFolders(project);
+        return JsonStore.Load<InspectionReport>(ProjectLayout.ReportFilePath(project, reportNumber));
+    }
 
     public static int GetNextReportNumber(Project project)
     {
+        CleanupAbandonedDeleteFolders(project);
         var highest = GetOccupiedReportNumbers(project).DefaultIfEmpty(0).Max();
         return Math.Max(project.NextReportNumber, highest + 1);
     }
@@ -161,6 +180,7 @@ public static class ReportStore
 
     public static bool ReportNumberExists(Project project, int reportNumber)
     {
+        CleanupAbandonedDeleteFolders(project);
         var folder = ProjectLayout.ReportFolder(project, reportNumber);
         if (!Directory.Exists(folder))
         {
@@ -172,6 +192,7 @@ public static class ReportStore
 
     public static IReadOnlyList<int> GetOccupiedReportNumbers(Project project)
     {
+        CleanupAbandonedDeleteFolders(project);
         var reportsFolder = ProjectLayout.ReportsFolder(project);
         if (!Directory.Exists(reportsFolder))
         {
@@ -200,6 +221,7 @@ public static class ReportStore
 
     public static ReportLoadResult LoadAllReports(Project project)
     {
+        CleanupAbandonedDeleteFolders(project);
         var reportsFolder = ProjectLayout.ReportsFolder(project);
         if (!Directory.Exists(reportsFolder))
         {
@@ -229,12 +251,14 @@ public static class ReportStore
         return new ReportLoadResult(reports, issues);
     }
 
-    public static bool DeleteReport(Project project, int reportNumber)
+    public static DeleteReportStatus DeleteReport(Project project, int reportNumber)
     {
+        CleanupAbandonedDeleteFolders(project);
+
         var reportFolder = ProjectLayout.ReportFolder(project, reportNumber);
         if (!Directory.Exists(reportFolder))
         {
-            return false;
+            return DeleteReportStatus.NotFound;
         }
 
         var reportsRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(ProjectLayout.ReportsFolder(project)));
@@ -244,8 +268,37 @@ public static class ReportStore
             throw new InvalidOperationException("Report folder resolves outside the project reports folder.");
         }
 
-        Directory.Delete(fullReportFolder, recursive: true);
-        return true;
+        var deletingFolder = Path.Combine(
+            reportsRoot,
+            $".{Path.GetFileName(fullReportFolder)}.deleting.{Guid.NewGuid():N}");
+        EnsureChildOfReportsRoot(reportsRoot, deletingFolder, "Delete staging folder resolves outside the project reports folder.");
+
+        try
+        {
+            if (RenameFailureHookForTesting?.Invoke(fullReportFolder, deletingFolder) is { } renameFailure)
+            {
+                throw renameFailure;
+            }
+
+            RenameObserverForTesting?.Invoke(fullReportFolder, deletingFolder);
+            Directory.Move(fullReportFolder, deletingFolder);
+        }
+        catch (IOException)
+        {
+            return DeleteReportStatus.InUse;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return DeleteReportStatus.InUse;
+        }
+
+        if (DeleteFailureHookForTesting?.Invoke(deletingFolder) is { } deleteFailure)
+        {
+            throw deleteFailure;
+        }
+
+        Directory.Delete(deletingFolder, recursive: true);
+        return DeleteReportStatus.Deleted;
     }
 
     public static string StoredPhotoPath(Project project, InspectionReport report, Photo photo)
@@ -277,6 +330,8 @@ public static class ReportStore
 
     public static void CleanupPreviewArtifacts(Project project, int reportNumber, bool removePreview = true)
     {
+        CleanupAbandonedDeleteFolders(project);
+
         var previewPath = ProjectLayout.ReportPreviewPath(project, reportNumber);
         if (removePreview && File.Exists(previewPath))
         {
@@ -316,6 +371,43 @@ public static class ReportStore
         if (!normalizedPath.StartsWith(normalizedFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Stored photo path escapes the report photos folder.");
+        }
+    }
+
+    private static void CleanupAbandonedDeleteFolders(Project project)
+    {
+        var reportsRoot = ProjectLayout.ReportsFolder(project);
+        if (!Directory.Exists(reportsRoot))
+        {
+            return;
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(reportsRoot))
+        {
+            var name = Path.GetFileName(directory);
+            if (!name.Contains(".deleting.", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch
+            {
+                // Best-effort cleanup on project open/load.
+            }
+        }
+    }
+
+    private static void EnsureChildOfReportsRoot(string reportsRoot, string path, string errorMessage)
+    {
+        var normalizedReportsRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(reportsRoot));
+        var normalizedPath = Path.GetFullPath(path);
+        if (!normalizedPath.StartsWith(normalizedReportsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(errorMessage);
         }
     }
 

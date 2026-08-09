@@ -55,7 +55,7 @@ public static class ProjectLayout
         var datePart = report.Date == default ? DateTime.Today.ToString("yyyy-MM-dd") : report.Date.ToString("yyyy-MM-dd");
         var projectNamePart = SanitizeFileNameSegment(project.Name, "Project");
         var reportNumberPart = report.Number.ToString();
-        var reportLabel = projectNamePart.EndsWith("SPIN", StringComparison.OrdinalIgnoreCase)
+        var reportLabel = HasTrailingSpinWord(projectNamePart)
             ? "Report"
             : "SPIN Report";
         var fileName = $"{datePart} {projectNamePart} {reportLabel} #{reportNumberPart}.docx";
@@ -68,6 +68,10 @@ public static class ProjectLayout
     public static bool IsValidProjectFolder(string path)
         => Directory.Exists(path)
            && File.Exists(Path.Combine(path, ProjectFileName));
+
+    private static bool HasTrailingSpinWord(string projectName)
+        => string.Equals(projectName, "SPIN", StringComparison.OrdinalIgnoreCase)
+           || projectName.EndsWith(" SPIN", StringComparison.OrdinalIgnoreCase);
 
     private static string SanitizeFileNameSegment(string value, string fallback)
     {

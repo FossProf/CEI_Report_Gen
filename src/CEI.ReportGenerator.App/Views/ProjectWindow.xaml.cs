@@ -413,7 +413,8 @@ public partial class ProjectWindow : Window
 
         try
         {
-            if (!ReportStore.DeleteReport(_project, item.Report.Number))
+            var deleteStatus = ReportStore.DeleteReport(_project, item.Report.Number);
+            if (deleteStatus == ReportStore.DeleteReportStatus.NotFound)
             {
                 MessageBox.Show(
                     this,
@@ -421,6 +422,16 @@ public partial class ProjectWindow : Window
                     "Delete Report",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
+            }
+            else if (deleteStatus == ReportStore.DeleteReportStatus.InUse)
+            {
+                MessageBox.Show(
+                    this,
+                    "Report could not be deleted because one or more files are currently in use. Close the report in Word and try again.",
+                    "Delete Report",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
             }
 
             RefreshDashboard();
