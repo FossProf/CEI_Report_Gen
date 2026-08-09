@@ -506,6 +506,115 @@ try
     Assert(ProjectLayout.IsValidProjectFolder(projectFolder), "project folder recognized");
     Console.WriteLine($"  Initial next report number: {project.NextReportNumber}");
 
+    Console.WriteLine("\n== New project folders nest under the selected root ==");
+    var nestedProjectsRoot = Path.Combine(workspace, "nested_projects_root");
+    var suggestedNestedFolder = ProjectLayout.DefaultNewProjectFolderPath(nestedProjectsRoot, "CMF Structural Repairs");
+    Assert(
+        suggestedNestedFolder.Equals(Path.Combine(nestedProjectsRoot, "CMF Structural Repairs"), StringComparison.OrdinalIgnoreCase),
+        "default root + project name creates nested path");
+    Assert(
+        ProjectLayout.DefaultNewProjectFolderPath(@"D:\Inspection Projects", "Clarifier 6 Repairs")
+            .Equals(Path.Combine(@"D:\Inspection Projects", "Clarifier 6 Repairs"), StringComparison.OrdinalIgnoreCase),
+        "alternate parent root creates nested path");
+    Assert(ProjectLayout.SanitizeProjectFolderName("CMF: Structural / Repairs?") == "CMF_ Structural _ Repairs_", "invalid filename characters sanitized for project folders");
+    Assert(ProjectLayout.SanitizeProjectFolderName("CON") == "CON_", "reserved Windows names are made safe for project folders");
+    Assert(ProjectLayout.SanitizeProjectFolderName("   ") == "New Project", "blank project folder suggestions fall back safely");
+
+    var nestedProject = ProjectStore.Create(
+        suggestedNestedFolder,
+        "CMF Structural Repairs",
+        "24-9999",
+        "Owner",
+        "CM",
+        "GC",
+        templatePath,
+        photoFiles[0],
+        photoFiles[1]);
+    Assert(
+        nestedProject.FolderPath.Equals(Path.GetFullPath(suggestedNestedFolder), StringComparison.OrdinalIgnoreCase),
+        "created project uses the nested project folder");
+    Assert(
+        Path.GetDirectoryName(nestedProject.FolderPath)!.Equals(Path.GetFullPath(nestedProjectsRoot), StringComparison.OrdinalIgnoreCase),
+        "nested project folder lives directly beneath the selected root");
+    Assert(File.Exists(nestedProject.FilePath), "project.json lives inside the nested project folder");
+    Assert(Directory.Exists(ProjectLayout.ReportsFolder(nestedProject)), "Reports folder lives inside the nested project folder");
+    Assert(Directory.Exists(ProjectLayout.SignaturesFolder(nestedProject)), "Signatures folder lives inside the nested project folder");
+
+    Console.WriteLine("\n== Project rename does not move an existing folder ==");
+    var renameProjectFolder = Path.Combine(workspace, "rename_root", "Project A");
+    var renameProject = ProjectStore.Create(
+        renameProjectFolder,
+        "Project A",
+        "24-2001",
+        "Owner",
+        "CM",
+        "GC",
+        templatePath,
+        photoFiles[0],
+        photoFiles[1]);
+    var renameOriginalFolder = renameProject.FolderPath;
+    ProjectStore.Update(
+        renameProject,
+        "Project B",
+        renameProject.Number,
+        renameProject.Owner,
+        renameProject.ContractManager,
+        renameProject.GeneralContractor,
+        renameProject.TemplatePath,
+        renameProject.InspectorSignaturePath,
+        renameProject.ProjectManagerSignaturePath);
+    Assert(renameProject.Name == "Project B", "project name can change without recreating the project");
+    Assert(renameProject.FolderPath == renameOriginalFolder, "renamed project does not relocate folder");
+    Assert(Directory.Exists(renameOriginalFolder), "renamed project folder remains in place");
+    Assert(ProjectStore.Load(renameOriginalFolder)!.Name == "Project B", "renamed project persists without moving folder");
+
+    Console.WriteLine("\n== Recent and startup reopen use final nested project folders ==");
+    var nestedStartupSettingsPath = Path.Combine(workspace, "nested_settings", "settings.json");
+    var nestedSettingsStore = new ApplicationSettingsStore(nestedStartupSettingsPath);
+    var nestedStartupSettings = nestedSettingsStore.Load();
+    nestedStartupSettings.ReopenLastProjectOnStartup = true;
+    nestedStartupSettings.LastOpenedProjectPath = nestedProject.FolderPath;
+    nestedSettingsStore.Save(nestedStartupSettings);
+    Assert(
+        ApplicationSettingsBehavior.GetStartupReopenProjectPath(nestedStartupSettings, nestedSettingsStore) == nestedProject.FolderPath,
+        "reopen-last-project uses the final nested folder");
+
+    var recentProjectsFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "CEIReportGenerator",
+        "recent-projects.json");
+    Directory.CreateDirectory(Path.GetDirectoryName(recentProjectsFile)!);
+    var hadRecentProjectsBackup = File.Exists(recentProjectsFile);
+    var recentProjectsBackup = hadRecentProjectsBackup ? File.ReadAllText(recentProjectsFile) : null;
+    try
+    {
+        if (hadRecentProjectsBackup)
+        {
+            File.Delete(recentProjectsFile);
+        }
+
+        RecentProjectStore.Record(nestedProject.Name, nestedProject.FolderPath, 10);
+        var recentEntries = RecentProjectStore.Load(10);
+        Assert(
+            recentEntries.Any(entry => string.Equals(entry.FolderPath, nestedProject.FolderPath, StringComparison.OrdinalIgnoreCase)),
+            "recent-project path uses the nested project folder");
+        RecentProjectStore.Remove(nestedProject.FolderPath);
+    }
+    finally
+    {
+        if (recentProjectsBackup is null)
+        {
+            if (File.Exists(recentProjectsFile))
+            {
+                File.Delete(recentProjectsFile);
+            }
+        }
+        else
+        {
+            File.WriteAllText(recentProjectsFile, recentProjectsBackup);
+        }
+    }
+
     Console.WriteLine("\n== Signature store ==");
     var sigNames = SignatureStore.ListSignatureFiles(project.FolderPath);
     Assert(sigNames.Count == 2, "two signature files listed");

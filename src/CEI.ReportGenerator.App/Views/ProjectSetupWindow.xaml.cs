@@ -17,14 +17,18 @@ public partial class ProjectSetupWindow : Window
     {
         InitializeComponent();
         _existing = existing;
+        NameBox.TextChanged += NameBox_TextChanged;
 
         if (existing is not null)
         {
             Title = "Edit Project";
             SaveButton.Content = "Save Changes";
+            ProjectLocationLabel.Text = "Project folder *";
+            ProjectFolderHelpText.Text = "Project files remain in this folder:";
             FolderBox.Text = existing.FolderPath;
             FolderBrowseButton.IsEnabled = false;
             PopulateFrom(existing);
+            ProjectFolderPreviewText.Text = existing.FolderPath;
         }
         else
         {
@@ -43,12 +47,19 @@ public partial class ProjectSetupWindow : Window
             {
                 TemplateBox.Text = bundledTemplate;
             }
+
+            RefreshNewProjectFolderPreview();
         }
     }
 
     public Project? CreatedProject { get; private set; }
 
-    private string ProjectFolderPath => _existing?.FolderPath ?? FolderBox.Text.Trim();
+    private string ProjectRootPath => FolderBox.Text.Trim();
+
+    private string SuggestedProjectFolderName => ProjectLayout.SanitizeProjectFolderName(NameBox.Text);
+
+    private string ProjectFolderPath
+        => _existing?.FolderPath ?? BuildNewProjectFolderPath();
 
     private void PopulateFrom(Project project)
     {
@@ -62,16 +73,29 @@ public partial class ProjectSetupWindow : Window
         RefreshSignatureCombo(PMSigCombo, project.ProjectManagerSignaturePath);
     }
 
+    private void NameBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_existing is not null)
+        {
+            return;
+        }
+
+        RefreshNewProjectFolderPreview();
+        RefreshSignatureCombo(InspectorSigCombo, string.Empty);
+        RefreshSignatureCombo(PMSigCombo, string.Empty);
+    }
+
     private void FolderBrowseButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog
         {
-            Title = "Select the folder for the new project",
-            InitialDirectory = GetExistingParent(ProjectFolderPath)
+            Title = "Select the parent folder for the new project",
+            InitialDirectory = GetExistingParent(ProjectRootPath)
         };
         if (dialog.ShowDialog(this) == true)
         {
             FolderBox.Text = dialog.FolderName;
+            RefreshNewProjectFolderPreview();
             RefreshSignatureCombo(InspectorSigCombo, string.Empty);
             RefreshSignatureCombo(PMSigCombo, string.Empty);
         }
@@ -101,7 +125,7 @@ public partial class ProjectSetupWindow : Window
         var folder = ProjectFolderPath;
         if (string.IsNullOrWhiteSpace(folder))
         {
-            ShowErrors(new[] { "Select the project folder first." });
+            ShowErrors(new[] { "Enter a project name and select the parent project location first." });
             return;
         }
 
@@ -130,7 +154,7 @@ public partial class ProjectSetupWindow : Window
         var folder = ProjectFolderPath;
         if (string.IsNullOrWhiteSpace(folder))
         {
-            ShowErrors(new[] { "Select the project folder first." });
+            ShowErrors(new[] { "Enter a project name and select the parent project location first." });
             return;
         }
 
@@ -155,6 +179,7 @@ public partial class ProjectSetupWindow : Window
             }
 
             RefreshSignatureCombo(combo, relative);
+            ClearErrors();
         }
         catch (Exception ex)
         {
@@ -200,9 +225,17 @@ public partial class ProjectSetupWindow : Window
         if (string.IsNullOrWhiteSpace(ContractBox.Text)) errors.Add("Contract manager is required.");
         if (string.IsNullOrWhiteSpace(GeneralBox.Text)) errors.Add("General contractor is required.");
 
-        if (_existing is null && string.IsNullOrWhiteSpace(FolderBox.Text))
+        if (_existing is null)
         {
-            errors.Add("Select the project folder.");
+            if (string.IsNullOrWhiteSpace(ProjectRootPath))
+            {
+                errors.Add("Select the parent project location.");
+            }
+
+            if (string.IsNullOrWhiteSpace(ProjectFolderPath))
+            {
+                errors.Add("Enter a project name to create a dedicated project folder.");
+            }
         }
 
         if (!File.Exists(TemplateBox.Text)) errors.Add("Select a valid Word template file.");
@@ -221,11 +254,26 @@ public partial class ProjectSetupWindow : Window
         {
             if (_existing is null)
             {
-                var folder = FolderBox.Text.Trim();
-                var existingJson = ProjectStore.ResolveProjectJson(folder);
-                if (existingJson is not null)
+                ApplicationSettingsValidator.ValidateAndEnsureFolder(ProjectRootPath);
+
+                var folder = ProjectFolderPath;
+                if (ProjectStore.ResolveProjectJson(folder) is not null)
                 {
-                    ShowErrors(new[] { "The selected folder already contains a project. Choose a different folder." });
+                    ShowErrors(new[]
+                    {
+                        $"A project folder named '{Path.GetFileName(folder)}' already contains a project.",
+                        "Select the existing project instead, choose another project name, or browse to another parent location."
+                    });
+                    return;
+                }
+
+                if (Directory.Exists(folder))
+                {
+                    ShowErrors(new[]
+                    {
+                        $"A project folder named '{Path.GetFileName(folder)}' already exists.",
+                        "Select the existing project instead, choose another project name, or browse to another parent location."
+                    });
                     return;
                 }
 
@@ -263,10 +311,37 @@ public partial class ProjectSetupWindow : Window
         }
     }
 
+    private string BuildNewProjectFolderPath()
+    {
+        var root = ProjectRootPath;
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return string.Empty;
+        }
+
+        return ProjectLayout.DefaultNewProjectFolderPath(root, NameBox.Text);
+    }
+
+    private void RefreshNewProjectFolderPreview()
+    {
+        if (_existing is not null)
+        {
+            return;
+        }
+
+        ProjectFolderPreviewText.Text = BuildNewProjectFolderPath();
+    }
+
     private void ShowErrors(IEnumerable<string> errors)
     {
         ErrorText.Text = string.Join(Environment.NewLine, errors.Select(e => "* " + e));
         ErrorText.Visibility = Visibility.Visible;
+    }
+
+    private void ClearErrors()
+    {
+        ErrorText.Text = string.Empty;
+        ErrorText.Visibility = Visibility.Collapsed;
     }
 
     private static string GetExistingParent(string path)

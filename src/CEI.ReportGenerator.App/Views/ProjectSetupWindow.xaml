@@ -34,7 +34,7 @@
                 <TextBlock Text="General contractor *" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="GeneralBox" Style="{StaticResource FieldBox}"/>
 
-                <TextBlock Text="Project folder *" Style="{StaticResource FieldLabel}"/>
+                <TextBlock x:Name="ProjectLocationLabel" Text="Project location *" Style="{StaticResource FieldLabel}"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -45,6 +45,8 @@
                             Style="{StaticResource SecondaryButton}"
                             Padding="10,4" Click="FolderBrowseButton_Click"/>
                 </Grid>
+                <TextBlock x:Name="ProjectFolderHelpText" Text="New project will be created at:" Style="{StaticResource SecondaryText}" Margin="0,6,0,0"/>
+                <TextBlock x:Name="ProjectFolderPreviewText" Style="{StaticResource SecondaryText}" TextWrapping="Wrap"/>
 
                 <TextBlock Text="Approved CEI Word template (.docx) *" Style="{StaticResource FieldLabel}"/>
                 <Grid>

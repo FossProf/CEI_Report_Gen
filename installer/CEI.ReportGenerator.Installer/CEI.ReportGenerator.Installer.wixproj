@@ -8,4 +8,8 @@
     <SuppressIces>ICE61</SuppressIces>
     <DefineConstants>PublishDir=$(PublishDir);AppIconPath=$(AppIconPath);ReleaseProductName=$(ReleaseProductName);ReleaseProductVersion=$(ReleaseProductVersion);ReleaseInformationalVersion=$(ReleaseInformationalVersion)</DefineConstants>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+  </ItemGroup>
 </Project>

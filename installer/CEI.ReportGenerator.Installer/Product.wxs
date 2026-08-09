@@ -1,4 +1,5 @@
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package
     Name="$(var.ReleaseProductName)"
     Manufacturer="Cornerstone Engineering / CEI"
@@ -32,6 +33,10 @@
       <ComponentRef Id="ApplicationShortcutComponent" />
     </Feature>
   </Package>
+
+  <Fragment>
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+  </Fragment>
 
   <Fragment>
     <DirectoryRef Id="ApplicationProgramsFolder">

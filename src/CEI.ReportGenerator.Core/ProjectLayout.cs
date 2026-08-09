@@ -4,6 +4,13 @@ namespace CEI.ReportGenerator.Core;
 
 public static class ProjectLayout
 {
+    private static readonly HashSet<string> ReservedWindowsNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    };
+
     public const string ProjectFileName = "project.json";
 
     public const string ReportsFolderName = "Reports";
@@ -39,6 +46,9 @@ public static class ProjectLayout
     public static string FinalReportPath(Project project, InspectionReport report)
         => Path.Combine(ReportFolder(project, report.Number), DefaultReportFileName(project, report));
 
+    public static string DefaultNewProjectFolderPath(string projectsRoot, string projectName)
+        => Path.Combine(projectsRoot, SanitizeProjectFolderName(projectName));
+
     public static string FinalizingReportPath(Project project, InspectionReport report)
         => Path.Combine(
             ReportFolder(project, report.Number),
@@ -69,11 +79,17 @@ public static class ProjectLayout
         => Directory.Exists(path)
            && File.Exists(Path.Combine(path, ProjectFileName));
 
+    public static string SanitizeProjectFolderName(string projectName)
+        => SanitizeWindowsNameSegment(projectName, "New Project");
+
     private static bool HasTrailingSpinWord(string projectName)
         => string.Equals(projectName, "SPIN", StringComparison.OrdinalIgnoreCase)
            || projectName.EndsWith(" SPIN", StringComparison.OrdinalIgnoreCase);
 
     private static string SanitizeFileNameSegment(string value, string fallback)
+        => SanitizeWindowsNameSegment(value, fallback);
+
+    private static string SanitizeWindowsNameSegment(string value, string fallback)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -87,6 +103,10 @@ public static class ProjectLayout
             .ToArray());
         sanitized = string.Join(" ", sanitized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
         sanitized = sanitized.TrimEnd('.', ' ');
+        if (ReservedWindowsNames.Contains(sanitized))
+        {
+            sanitized += "_";
+        }
         return string.IsNullOrWhiteSpace(sanitized) ? fallback : sanitized;
     }
 }
