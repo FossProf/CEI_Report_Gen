@@ -267,11 +267,11 @@ public partial class ProjectSetupWindow : Window
                     return;
                 }
 
-                if (Directory.Exists(folder))
+                if (!ProjectLayout.CanInitializeNewProjectFolder(folder))
                 {
                     ShowErrors(new[]
                     {
-                        $"A project folder named '{Path.GetFileName(folder)}' already exists.",
+                        $"A project folder named '{Path.GetFileName(folder)}' already contains other files or folders.",
                         "Select the existing project instead, choose another project name, or browse to another parent location."
                     });
                     return;

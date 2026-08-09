@@ -1,4 +1,5 @@
 using CEI.ReportGenerator.Core.Models;
+using CEI.ReportGenerator.Core.Services;
 
 namespace CEI.ReportGenerator.Core;
 
@@ -79,6 +80,50 @@ public static class ProjectLayout
         => Directory.Exists(path)
            && File.Exists(Path.Combine(path, ProjectFileName));
 
+    public static bool CanInitializeNewProjectFolder(string folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        {
+            return true;
+        }
+
+        var entries = Directory.EnumerateFileSystemEntries(folder).ToList();
+        if (entries.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var entry in entries)
+        {
+            var name = Path.GetFileName(entry);
+            if (string.Equals(name, ProjectFileName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, ReportsFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (File.Exists(entry))
+            {
+                return false;
+            }
+
+            if (Directory.Exists(entry))
+            {
+                if (!string.Equals(name, SignaturesFolderName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                if (!CanInitializeSignatureFolder(entry))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     public static string SanitizeProjectFolderName(string projectName)
         => SanitizeWindowsNameSegment(projectName, "New Project");
 
@@ -88,6 +133,31 @@ public static class ProjectLayout
 
     private static string SanitizeFileNameSegment(string value, string fallback)
         => SanitizeWindowsNameSegment(value, fallback);
+
+    private static bool CanInitializeSignatureFolder(string signaturesFolder)
+    {
+        foreach (var entry in Directory.EnumerateFileSystemEntries(signaturesFolder))
+        {
+            if (Directory.Exists(entry))
+            {
+                return false;
+            }
+
+            var name = Path.GetFileName(entry);
+            if (string.Equals(name, "desktop.ini", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "thumbs.db", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!SignatureStore.IsSupportedFileName(entry))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static string SanitizeWindowsNameSegment(string value, string fallback)
     {

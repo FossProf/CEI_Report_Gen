@@ -519,6 +519,39 @@ try
     Assert(ProjectLayout.SanitizeProjectFolderName("CMF: Structural / Repairs?") == "CMF_ Structural _ Repairs_", "invalid filename characters sanitized for project folders");
     Assert(ProjectLayout.SanitizeProjectFolderName("CON") == "CON_", "reserved Windows names are made safe for project folders");
     Assert(ProjectLayout.SanitizeProjectFolderName("   ") == "New Project", "blank project folder suggestions fall back safely");
+    Assert(ProjectLayout.CanInitializeNewProjectFolder(Path.Combine(workspace, "safe_missing_folder")), "nonexistent folder is safe to initialize");
+
+    var safeEmptyFolder = Path.Combine(workspace, "safe_empty_folder");
+    Directory.CreateDirectory(safeEmptyFolder);
+    Assert(ProjectLayout.CanInitializeNewProjectFolder(safeEmptyFolder), "empty folder is safe to initialize");
+
+    var safeSignaturesOnlyFolder = Path.Combine(workspace, "safe_signatures_only");
+    Directory.CreateDirectory(Path.Combine(safeSignaturesOnlyFolder, ProjectLayout.SignaturesFolderName));
+    Assert(ProjectLayout.CanInitializeNewProjectFolder(safeSignaturesOnlyFolder), "folder containing only Signatures is safe to initialize");
+
+    var safeImportedSignaturesFolder = Path.Combine(workspace, "safe_imported_signatures");
+    Directory.CreateDirectory(Path.Combine(safeImportedSignaturesFolder, ProjectLayout.SignaturesFolderName));
+    File.Copy(photoFiles[0], Path.Combine(safeImportedSignaturesFolder, ProjectLayout.SignaturesFolderName, Path.GetFileName(photoFiles[0])), overwrite: true);
+    File.Copy(photoFiles[1], Path.Combine(safeImportedSignaturesFolder, ProjectLayout.SignaturesFolderName, Path.GetFileName(photoFiles[1])), overwrite: true);
+    Assert(ProjectLayout.CanInitializeNewProjectFolder(safeImportedSignaturesFolder), "Signatures containing PNG/JPG files is safe to initialize");
+
+    var unsafeProjectJsonFolder = Path.Combine(workspace, "unsafe_project_json");
+    Directory.CreateDirectory(unsafeProjectJsonFolder);
+    File.WriteAllText(Path.Combine(unsafeProjectJsonFolder, ProjectLayout.ProjectFileName), "{}");
+    Assert(!ProjectLayout.CanInitializeNewProjectFolder(unsafeProjectJsonFolder), "project.json makes folder unsafe");
+
+    var unsafeReportsFolder = Path.Combine(workspace, "unsafe_reports");
+    Directory.CreateDirectory(Path.Combine(unsafeReportsFolder, ProjectLayout.ReportsFolderName));
+    Assert(!ProjectLayout.CanInitializeNewProjectFolder(unsafeReportsFolder), "Reports directory makes folder unsafe");
+
+    var unsafeRootFileFolder = Path.Combine(workspace, "unsafe_root_file");
+    Directory.CreateDirectory(unsafeRootFileFolder);
+    File.WriteAllText(Path.Combine(unsafeRootFileFolder, "random.txt"), "random");
+    Assert(!ProjectLayout.CanInitializeNewProjectFolder(unsafeRootFileFolder), "arbitrary root file makes folder unsafe");
+
+    var unsafeRootDirectoryFolder = Path.Combine(workspace, "unsafe_root_directory");
+    Directory.CreateDirectory(Path.Combine(unsafeRootDirectoryFolder, "Old Documents"));
+    Assert(!ProjectLayout.CanInitializeNewProjectFolder(unsafeRootDirectoryFolder), "arbitrary root directory makes folder unsafe");
 
     var nestedProject = ProjectStore.Create(
         suggestedNestedFolder,
@@ -539,6 +572,46 @@ try
     Assert(File.Exists(nestedProject.FilePath), "project.json lives inside the nested project folder");
     Assert(Directory.Exists(ProjectLayout.ReportsFolder(nestedProject)), "Reports folder lives inside the nested project folder");
     Assert(Directory.Exists(ProjectLayout.SignaturesFolder(nestedProject)), "Signatures folder lives inside the nested project folder");
+
+    Console.WriteLine("\n== New project creation accepts pre-created Signatures folder ==");
+    var preCreatedFolder = Path.Combine(workspace, "precreated_root", "Imported Signatures Project");
+    Directory.CreateDirectory(preCreatedFolder);
+    var importedInspector = SignatureStore.Import(preCreatedFolder, photoFiles[2], replaceIfExists: false);
+    var importedPm = SignatureStore.Import(preCreatedFolder, photoFiles[3], replaceIfExists: false);
+    Assert(importedInspector is not null && importedPm is not null, "signature import created the target folder before project creation");
+    Assert(ProjectLayout.CanInitializeNewProjectFolder(preCreatedFolder), "pre-created folder containing only Signatures remains safe");
+    var preCreatedProject = ProjectStore.Create(
+        preCreatedFolder,
+        "Imported Signatures Project",
+        "24-3001",
+        "Owner",
+        "CM",
+        "GC",
+        templatePath,
+        SignatureStore.SignatureRelativePath(Path.GetFileName(importedInspector!)!),
+        SignatureStore.SignatureRelativePath(Path.GetFileName(importedPm!)!));
+    Assert(preCreatedProject.InspectorSignaturePath == SignatureStore.SignatureRelativePath(Path.GetFileName(importedInspector!)!), "imported inspector signature remains selected after project creation");
+    Assert(preCreatedProject.ProjectManagerSignaturePath == SignatureStore.SignatureRelativePath(Path.GetFileName(importedPm!)!), "imported PM signature remains selected after project creation");
+    Assert(File.Exists(preCreatedProject.ResolvedInspectorSignaturePath!), "imported inspector signature still resolves after project creation");
+    Assert(File.Exists(preCreatedProject.ResolvedProjectManagerSignaturePath!), "imported PM signature still resolves after project creation");
+    var preCreatedReport = MakeReport(preCreatedProject, 1, 1, "Sunny", photoFiles);
+    var preCreatedPreview = ReportGenerator.GenerateDraft(preCreatedProject, preCreatedReport);
+    ReportGenerator.FinalizeReport(preCreatedProject, preCreatedReport, preCreatedPreview.OutputPath);
+    Assert(File.Exists(ProjectLayout.FinalReportPath(preCreatedProject, preCreatedReport)), "project creation after signature import still supports report finalize");
+
+    var existingProjectCollisionFolder = Path.Combine(workspace, "existing_project_collision");
+    var existingProjectCollision = ProjectStore.Create(
+        existingProjectCollisionFolder,
+        "Existing Collision",
+        "24-3002",
+        "Owner",
+        "CM",
+        "GC",
+        templatePath,
+        photoFiles[0],
+        photoFiles[1]);
+    Assert(ProjectStore.ResolveProjectJson(existingProjectCollisionFolder) is not null, "existing project collision is still detected authoritatively");
+    Assert(!ProjectLayout.CanInitializeNewProjectFolder(existingProjectCollisionFolder), "existing project collision remains unsafe for new project initialization");
 
     Console.WriteLine("\n== Project rename does not move an existing folder ==");
     var renameProjectFolder = Path.Combine(workspace, "rename_root", "Project A");
