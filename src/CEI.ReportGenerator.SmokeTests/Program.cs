@@ -1198,6 +1198,46 @@ try
     Assert(rollbackLoadedReport is null || rollbackLoadedReport.Status != ReportStatus.Final, "report.json not left finalized after rollback");
 
     Console.WriteLine("\n== Historical report search-index import contract ==");
+    var invalidImportFolder = Path.Combine(workspace, "historical_invalid_project");
+    var invalidImportReportsFolder = Path.Combine(invalidImportFolder, ProjectLayout.ReportsFolderName);
+    var invalidImportStagingFolder = Path.Combine(invalidImportReportsFolder, ".importing.0216.test");
+    Directory.CreateDirectory(invalidImportStagingFolder);
+    var invalidImportSentinel = Path.Combine(invalidImportStagingFolder, "sentinel.txt");
+    File.WriteAllText(invalidImportSentinel, "keep me");
+    var invalidImportSourceDocx = Path.Combine(workspace, "historical_invalid_project_source.docx");
+    File.Copy(templatePath, invalidImportSourceDocx);
+    var invalidImportProject = new Project
+    {
+        Name = "Not A Project",
+        Number = "9999",
+        Owner = "Owner",
+        ContractManager = "CM",
+        GeneralContractor = "GC",
+        FolderPath = invalidImportFolder
+    };
+    var invalidImportResult = HistoricalReportImportService.Import(
+        invalidImportProject,
+        new HistoricalReportImportRequest
+        {
+            Number = 216,
+            Date = new DateTime(2025, 7, 10),
+            Weather = "Partly Cloudy",
+            Locations = "Gridline 2",
+            Inspectors = "Anthony Wintergerst",
+            PersonnelOnSite = "CMU Crew",
+            DescriptionOfWork = "Filesystem inert invalid-project test.",
+            DrawingsReviewed = "HX-INVALID-216",
+            Observations = "Invalid project should not trigger cleanup.",
+            SourceDocumentPath = invalidImportSourceDocx
+        });
+    Assert(invalidImportResult.Status == HistoricalReportImportStatus.InvalidProject, "invalid project returns InvalidProject");
+    Assert(string.IsNullOrEmpty(invalidImportResult.ReportFolder), "invalid project result leaves report folder path empty");
+    Assert(string.IsNullOrEmpty(invalidImportResult.ReportJsonPath), "invalid project result leaves report.json path empty");
+    Assert(string.IsNullOrEmpty(invalidImportResult.ImportMetadataPath), "invalid project result leaves metadata path empty");
+    Assert(Directory.Exists(invalidImportStagingFolder), "invalid project does not clean abandoned importing folders");
+    Assert(File.Exists(invalidImportSentinel), "invalid project leaves sentinel file untouched");
+    Assert(!File.Exists(Path.Combine(invalidImportFolder, ProjectLayout.ProjectFileName)), "invalid project import does not create project.json");
+
     var historicalImportProject = ProjectStore.Create(
         Path.Combine(workspace, "historical_import_project"), "Historical Search", "2160", "Owner", "CM", "GC",
         templatePath, photoFiles[0], photoFiles[1]);
@@ -1228,6 +1268,9 @@ try
         SourceDocumentPath = historicalSourceDocx,
         SourceCreatedUtc = new DateTime(2025, 7, 10, 14, 0, 0, DateTimeKind.Utc)
     };
+    var historicalAbandonedStagingFolder = Path.Combine(ProjectLayout.ReportsFolder(historicalImportProject), ".importing.0216.test");
+    Directory.CreateDirectory(historicalAbandonedStagingFolder);
+    File.WriteAllText(Path.Combine(historicalAbandonedStagingFolder, "abandoned.txt"), "remove me");
 
     var historicalImportResult = HistoricalReportImportService.Import(historicalImportProject, historicalImportRequest);
     Assert(historicalImportResult.Status == HistoricalReportImportStatus.Imported, "historical import returns Imported status");
@@ -1236,6 +1279,7 @@ try
     Assert(File.Exists(historicalImportResult.ReportJsonPath), "historical import writes report.json");
     Assert(File.Exists(historicalImportResult.ImportMetadataPath), "historical import writes import-metadata.json");
     Assert(!Directory.EnumerateFiles(historicalImportResult.ReportFolder, "*.docx", SearchOption.TopDirectoryOnly).Any(), "historical import does not copy a DOCX into the report folder");
+    Assert(!Directory.Exists(historicalAbandonedStagingFolder), "valid project import still cleans abandoned importing folders");
 
     var importedHistoricalReport = ReportStore.LoadReport(historicalImportProject, 216);
     Assert(importedHistoricalReport is not null, "historical import report reloads from report.json");
@@ -1310,6 +1354,59 @@ try
     Assert(SearchReportNumbers(historicalReloadedResult.Reports, new ReportSearchCriteria { SearchText = "ladder reinforcing" }).SequenceEqual([216]), "historical search remains independent of source archive availability");
     var historicalReloadedSummary = ProjectDashboardSummaryBuilder.Build(historicalReloadedProject, historicalReloadedResult);
     Assert(historicalReloadedSummary.TotalReports == 26 && historicalReloadedSummary.FinalReports == 1, "historical import still counts correctly after archive removal");
+
+    Console.WriteLine("\n== Historical import rejects invalid number/date before staging ==");
+    var historicalValidationProject = ProjectStore.Create(
+        Path.Combine(workspace, "historical_validation_project"), "Historical Validation", "2164", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var historicalValidationArchiveFolder = Path.Combine(workspace, "historical_validation_archive");
+    Directory.CreateDirectory(historicalValidationArchiveFolder);
+    var historicalValidationSourceDocx = Path.Combine(historicalValidationArchiveFolder, "2025-07-13 Historical Validation Report #90.docx");
+    File.Copy(templatePath, historicalValidationSourceDocx);
+    var validationReportsRoot = ProjectLayout.ReportsFolder(historicalValidationProject);
+    ExpectActionFailure(
+        () => HistoricalReportImportService.Import(
+            historicalValidationProject,
+            new HistoricalReportImportRequest
+            {
+                Number = 0,
+                Date = new DateTime(2025, 7, 13),
+                Weather = "Cloudy",
+                Locations = "Gridline 9",
+                Inspectors = "Anthony Wintergerst",
+                PersonnelOnSite = "Validation Crew",
+                DescriptionOfWork = "Invalid number validation test.",
+                DrawingsReviewed = "HX-0",
+                Observations = "Invalid number validation test.",
+                SourceDocumentPath = historicalValidationSourceDocx
+            }),
+        message => message.Contains("positive whole number", StringComparison.OrdinalIgnoreCase));
+    Assert(!Directory.EnumerateDirectories(validationReportsRoot)
+        .Any(path => Path.GetFileName(path).StartsWith(".importing.", StringComparison.OrdinalIgnoreCase)),
+        "invalid report number does not create staging directories");
+    Assert(!Directory.Exists(ProjectLayout.ReportFolder(historicalValidationProject, 0)), "invalid report number does not create a canonical report folder");
+
+    ExpectActionFailure(
+        () => HistoricalReportImportService.Import(
+            historicalValidationProject,
+            new HistoricalReportImportRequest
+            {
+                Number = 90,
+                Date = default,
+                Weather = "Cloudy",
+                Locations = "Gridline 9",
+                Inspectors = "Anthony Wintergerst",
+                PersonnelOnSite = "Validation Crew",
+                DescriptionOfWork = "Invalid date validation test.",
+                DrawingsReviewed = "HX-90",
+                Observations = "Invalid date validation test.",
+                SourceDocumentPath = historicalValidationSourceDocx
+            }),
+        message => message.Contains("date is required", StringComparison.OrdinalIgnoreCase));
+    Assert(!Directory.EnumerateDirectories(validationReportsRoot)
+        .Any(path => Path.GetFileName(path).StartsWith(".importing.", StringComparison.OrdinalIgnoreCase)),
+        "invalid date does not create staging directories");
+    Assert(!Directory.Exists(ProjectLayout.ReportFolder(historicalValidationProject, 90)), "invalid date does not create a canonical report folder");
 
     Console.WriteLine("\n== Historical import delete does not touch archive ==");
     var deleteImportedProject = ProjectStore.Create(

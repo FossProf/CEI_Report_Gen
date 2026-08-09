@@ -16,21 +16,15 @@ public static class HistoricalReportImportService
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(request);
 
-        CleanupAbandonedImportFolders(project);
-
-        var reportFolder = ProjectLayout.ReportFolder(project, request.Number);
-        var reportJsonPath = ProjectLayout.ReportFilePath(project, request.Number);
-        var importMetadataPath = ProjectLayout.ImportMetadataPath(project, request.Number);
-
         if (!ProjectLayout.IsValidProjectFolder(project.FolderPath))
         {
             return new HistoricalReportImportResult
             {
                 Status = HistoricalReportImportStatus.InvalidProject,
                 Message = "The destination must be an existing SPINgen project.",
-                ReportFolder = reportFolder,
-                ReportJsonPath = reportJsonPath,
-                ImportMetadataPath = importMetadataPath
+                ReportFolder = string.Empty,
+                ReportJsonPath = string.Empty,
+                ImportMetadataPath = string.Empty
             };
         }
 
@@ -43,6 +37,12 @@ public static class HistoricalReportImportService
         {
             throw new InvalidOperationException("Historical report date is required.");
         }
+
+        var reportFolder = ProjectLayout.ReportFolder(project, request.Number);
+        var reportJsonPath = ProjectLayout.ReportFilePath(project, request.Number);
+        var importMetadataPath = ProjectLayout.ImportMetadataPath(project, request.Number);
+
+        CleanupAbandonedImportFolders(project);
 
         if (string.IsNullOrWhiteSpace(request.SourceDocumentPath) || !File.Exists(request.SourceDocumentPath))
         {

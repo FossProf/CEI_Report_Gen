@@ -156,6 +156,8 @@ Only after both files are written successfully does SPINgen rename the staging f
 
 Failure must not leave a partial canonical report directory.
 
+Core validates that the destination is an existing SPINgen project before performing any staging cleanup or filesystem modification.
+
 ## Search Behavior
 
 After import, the historical report must load through normal SPINgen flows:
