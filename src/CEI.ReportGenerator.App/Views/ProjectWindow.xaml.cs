@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
@@ -12,7 +13,10 @@ namespace CEI.ReportGenerator.App.Views;
 
 public partial class ProjectWindow : Window
 {
+    private const string AllFilterOption = "All";
+
     private readonly Project _project;
+    private readonly DispatcherTimer _searchDebounceTimer;
     private bool _reportLoadWarningShown;
     private ReportStore.ReportLoadResult _currentLoadResult = new(Array.Empty<InspectionReport>(), Array.Empty<ReportStore.ReportLoadIssue>());
     private ProjectDashboardSummary _dashboardSummary = new()
@@ -34,6 +38,12 @@ public partial class ProjectWindow : Window
     {
         InitializeComponent();
         _project = project;
+        _searchDebounceTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        _searchDebounceTimer.Tick += SearchDebounceTimer_Tick;
+        InitializeSearchControls();
         RefreshDashboard();
         UpdateReportSelectionState();
     }
@@ -64,6 +74,46 @@ public partial class ProjectWindow : Window
     private void ReportsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateReportSelectionState();
+    }
+
+    private void SearchReportsTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        RefreshSearchWatermark();
+        _searchDebounceTimer.Stop();
+        _searchDebounceTimer.Start();
+    }
+
+    private void FilterControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        ApplyReportFilters();
+    }
+
+    private void DateFilter_SelectedDateChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        ApplyReportFilters();
+    }
+
+    private void ClearFiltersButton_Click(object sender, RoutedEventArgs e)
+    {
+        _searchDebounceTimer.Stop();
+        SearchReportsTextBox.Text = string.Empty;
+        StatusFilterComboBox.SelectedIndex = 0;
+        WeatherFilterComboBox.SelectedIndex = 0;
+        FromDatePicker.SelectedDate = null;
+        ToDatePicker.SelectedDate = null;
+        _searchDebounceTimer.Stop();
+        RefreshSearchWatermark();
+        ApplyReportFilters();
     }
 
     private void NewReportButton_Click(object sender, RoutedEventArgs e)
@@ -204,17 +254,12 @@ public partial class ProjectWindow : Window
         _currentLoadResult = ReportStore.LoadAllReports(_project);
         _dashboardSummary = ProjectDashboardSummaryBuilder.Build(_project, _currentLoadResult);
 
-        ReportsGrid.ItemsSource = _currentLoadResult.Reports
-            .OrderByDescending(r => r.Number)
-            .Select(r => new ReportListItem(_project, r))
-            .ToList();
-
         RefreshProjectHeader();
         RefreshReadinessPanel();
         RefreshReportCounts();
         RefreshStatusBar();
         RefreshReportLoadWarning();
-        UpdateReportSelectionState();
+        ApplyReportFilters(preserveCurrentResultsWhenInvalid: false);
     }
 
     private void RefreshProjectHeader()
@@ -233,8 +278,6 @@ public partial class ProjectWindow : Window
         TotalReportsText.Text = _dashboardSummary.TotalReports.ToString();
         FinalReportsText.Text = _dashboardSummary.FinalReports.ToString();
         DraftReportsText.Text = _dashboardSummary.DraftReports.ToString();
-
-        EmptyReportsText.Visibility = _dashboardSummary.HasReports ? Visibility.Collapsed : Visibility.Visible;
         if (_dashboardSummary.HasLoadIssues)
         {
             LoadIssuesText.Text = _dashboardSummary.LoadIssueMessage;
@@ -244,6 +287,135 @@ public partial class ProjectWindow : Window
         {
             LoadIssuesText.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void InitializeSearchControls()
+    {
+        StatusFilterComboBox.ItemsSource = new[]
+        {
+            FilterOption.ForStatus(AllFilterOption, null),
+            FilterOption.ForStatus("Draft", ReportStatus.Draft),
+            FilterOption.ForStatus("Final", ReportStatus.Final)
+        };
+        StatusFilterComboBox.SelectedIndex = 0;
+
+        WeatherFilterComboBox.ItemsSource = new[] { FilterOption.ForWeather(AllFilterOption, null) }
+            .Concat(WeatherOptions.All.Select(weather => FilterOption.ForWeather(weather, weather)))
+            .ToList();
+        WeatherFilterComboBox.SelectedIndex = 0;
+
+        RefreshSearchWatermark();
+    }
+
+    private void SearchDebounceTimer_Tick(object? sender, EventArgs e)
+    {
+        _searchDebounceTimer.Stop();
+        ApplyReportFilters();
+    }
+
+    private void ApplyReportFilters(bool preserveCurrentResultsWhenInvalid = true)
+    {
+        var previousSelectionNumber = GetSelectedReportItem()?.Report.Number;
+        var criteria = BuildCurrentSearchCriteria();
+        if (!ReportSearchService.TryValidateCriteria(criteria, out var validationMessage))
+        {
+            FilterValidationText.Text = validationMessage;
+            FilterValidationText.Visibility = Visibility.Visible;
+            if (preserveCurrentResultsWhenInvalid)
+            {
+                return;
+            }
+
+            criteria = new ReportSearchCriteria
+            {
+                SearchText = SearchReportsTextBox.Text,
+                Status = GetSelectedStatus(),
+                Weather = GetSelectedWeather()
+            };
+        }
+        else
+        {
+            FilterValidationText.Visibility = Visibility.Collapsed;
+        }
+
+        var filteredReports = ReportSearchService.Filter(
+            _currentLoadResult.Reports.OrderByDescending(r => r.Number),
+            criteria);
+        var items = filteredReports
+            .Select(r => new ReportListItem(_project, r))
+            .ToList();
+
+        ReportsGrid.ItemsSource = items;
+        UpdateResultCountText(filteredReports.Count, _currentLoadResult.Reports.Count);
+        UpdateEmptyState(filteredReports.Count);
+        RestoreSelection(previousSelectionNumber);
+        UpdateReportSelectionState();
+    }
+
+    private ReportSearchCriteria BuildCurrentSearchCriteria()
+        => new()
+        {
+            SearchText = SearchReportsTextBox.Text,
+            Status = GetSelectedStatus(),
+            Weather = GetSelectedWeather(),
+            FromDate = FromDatePicker.SelectedDate,
+            ToDate = ToDatePicker.SelectedDate
+        };
+
+    private ReportStatus? GetSelectedStatus()
+        => StatusFilterComboBox.SelectedItem is FilterOption { StatusValue: { } status }
+            ? status
+            : null;
+
+    private string? GetSelectedWeather()
+        => WeatherFilterComboBox.SelectedItem is FilterOption { WeatherValue: { } weather }
+            ? weather
+            : null;
+
+    private void UpdateResultCountText(int filteredCount, int totalCount)
+    {
+        FilteredResultsText.Text = filteredCount == 0
+            ? "No matching reports"
+            : $"Showing {filteredCount} of {totalCount} reports";
+    }
+
+    private void UpdateEmptyState(int filteredCount)
+    {
+        if (_dashboardSummary.TotalReports == 0)
+        {
+            EmptyReportsText.Text = "No reports have been created for this project.";
+            EmptyReportsText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        if (filteredCount == 0)
+        {
+            EmptyReportsText.Text = "No reports match the current search and filters.";
+            EmptyReportsText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        EmptyReportsText.Visibility = Visibility.Collapsed;
+    }
+
+    private void RestoreSelection(int? previousSelectionNumber)
+    {
+        if (!previousSelectionNumber.HasValue)
+        {
+            ReportsGrid.SelectedItem = null;
+            return;
+        }
+
+        var matchingItem = (ReportsGrid.ItemsSource as IEnumerable<ReportListItem>)
+            ?.FirstOrDefault(item => item.Report.Number == previousSelectionNumber.Value);
+        ReportsGrid.SelectedItem = matchingItem;
+    }
+
+    private void RefreshSearchWatermark()
+    {
+        SearchWatermarkText.Visibility = string.IsNullOrWhiteSpace(SearchReportsTextBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void RefreshReadinessPanel()
@@ -616,5 +788,14 @@ public partial class ProjectWindow : Window
             ? ProjectLayout.DefaultReportFileName(Project, Report)
             : Report.OutputFileName;
         public int PhotosCount => Report.Photos.Count;
+    }
+
+    private sealed record FilterOption(string Label, ReportStatus? StatusValue, string? WeatherValue)
+    {
+        public static FilterOption ForStatus(string label, ReportStatus? status)
+            => new(label, status, null);
+
+        public static FilterOption ForWeather(string label, string? weather)
+            => new(label, null, weather);
     }
 }

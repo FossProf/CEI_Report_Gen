@@ -288,6 +288,113 @@ try
     Assert(duplicatedFromDraft.Number == 17, "draft source also duplicates to authoritative next report number");
     Assert(duplicatedFromDraft.Status == ReportStatus.Draft, "draft source duplication still starts as draft");
 
+    Console.WriteLine("\n== Report search service ==");
+    var searchReports = new List<InspectionReport>
+    {
+        new()
+        {
+            Number = 216,
+            Status = ReportStatus.Final,
+            Date = new DateTime(2026, 7, 15),
+            Temperature = "92F",
+            Weather = "Cloudy",
+            Locations = "Gridline 2",
+            Inspectors = "Anthony Pace",
+            PersonnelOnSite = "Badge 50CFAE40 present",
+            DescriptionOfWork = "Bond beam reinforcing was inspected",
+            DrawingsReviewed = "S-201 lintel detail",
+            Observations = "CMU lintel installation reviewed prior to placement.",
+            NewDiscrepancies = "Anchor bolts need recheck.",
+            PreviousDiscrepancies = "Weldback repair completed.",
+            OutputFileName = "2026-07-15 Sample Project SPIN Report #216.docx",
+            Photos =
+            [
+                new Photo { Caption = "West elevation splice plate" }
+            ]
+        },
+        new()
+        {
+            Number = 40,
+            Status = ReportStatus.Draft,
+            Date = new DateTime(2026, 6, 1),
+            Temperature = "75F",
+            Weather = "Sunny",
+            Locations = "South stair tower",
+            Inspectors = "Jane Smith",
+            PersonnelOnSite = "Concrete crew",
+            DescriptionOfWork = "Slab edge formwork review",
+            DrawingsReviewed = "A-100",
+            Observations = "Pre-pour walk completed.",
+            NewDiscrepancies = "None.",
+            PreviousDiscrepancies = "N/A",
+            Photos =
+            [
+                new Photo { Caption = "South stair pan" }
+            ]
+        },
+        new()
+        {
+            Number = 9,
+            Status = ReportStatus.Final,
+            Date = new DateTime(2026, 7, 31),
+            Temperature = "81F",
+            Weather = "Cloudy",
+            Locations = "Roof curb",
+            Inspectors = "Jordan Miles",
+            PersonnelOnSite = "Steel crew",
+            DescriptionOfWork = "Final roof inspection",
+            DrawingsReviewed = "R-201",
+            Observations = "Final sealant touch-up review.",
+            NewDiscrepancies = "None.",
+            PreviousDiscrepancies = "Prior curb issue closed."
+        }
+    };
+    var searchSourceOrderBefore = searchReports.Select(report => report.Number).ToArray();
+
+    Assert(ReportSearchService.Filter(searchReports, new ReportSearchCriteria()).Count == 3, "blank criteria returns all reports");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "Gridline" }).SequenceEqual([216]), "keyword search matches Locations");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "2026-07-15" }).SequenceEqual([216]), "keyword search matches report date text");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "pace" }).SequenceEqual([216]), "keyword search matches Inspectors case-insensitively");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "50CFAE40" }).SequenceEqual([216]), "keyword search matches PersonnelOnSite");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "bond beam" }).SequenceEqual([216]), "keyword search matches DescriptionOfWork by substring");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "S-201" }).SequenceEqual([216]), "keyword search matches DrawingsReviewed");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "placement" }).SequenceEqual([216]), "keyword search matches Observations");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "Anchor" }).SequenceEqual([216]), "keyword search matches NewDiscrepancies");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "Weldback" }).SequenceEqual([216]), "keyword search matches PreviousDiscrepancies");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "Cloudy" }).SequenceEqual([216, 9]), "keyword search matches Weather");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "92F" }).SequenceEqual([216]), "keyword search matches Temperature");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "splice plate" }).SequenceEqual([216]), "keyword search matches photo captions");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "Sample Project SPIN Report" }).SequenceEqual([216]), "keyword search matches output file name");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "216" }).SequenceEqual([216]), "keyword search matches report number");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "#216" }).SequenceEqual([216]), "keyword search matches hash-prefixed report number");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "0216" }).SequenceEqual([216]), "keyword search matches padded report number");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "lintel" }).SequenceEqual([216]), "substring matching returns partial-term matches");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "gridline reinforcing" }).SequenceEqual([216]), "multiple search terms use AND behavior across fields");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "gridline masonry" }).Count == 0, "multiple search terms require every term to match");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { Status = ReportStatus.Draft }).SequenceEqual([40]), "status filter matches Draft reports");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { Status = ReportStatus.Final }).SequenceEqual([216, 9]), "status filter matches Final reports");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { FromDate = new DateTime(2026, 7, 15) }).SequenceEqual([216, 9]), "from date filter is inclusive");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { ToDate = new DateTime(2026, 7, 15) }).SequenceEqual([216, 40]), "to date filter is inclusive");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { FromDate = new DateTime(2026, 7, 1), ToDate = new DateTime(2026, 7, 31) }).SequenceEqual([216, 9]), "date range filter is inclusive on both ends");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { Weather = "Cloudy" }).SequenceEqual([216, 9]), "weather filter matches exact approved value");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria
+    {
+        SearchText = "bond",
+        Status = ReportStatus.Final,
+        Weather = "Cloudy",
+        FromDate = new DateTime(2026, 7, 1),
+        ToDate = new DateTime(2026, 7, 31)
+    }).SequenceEqual([216]), "combined keyword, status, date, and weather filters use AND semantics");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { SearchText = "not-present" }).Count == 0, "no matches returns an empty result");
+    Assert(searchReports.Select(report => report.Number).SequenceEqual(searchSourceOrderBefore), "source report list is not mutated by filtering");
+    Assert(searchReports[0].Photos[0].Caption == "West elevation splice plate", "source reports are not mutated by filtering");
+    Assert(SearchReportNumbers(searchReports, new ReportSearchCriteria { Weather = "Cloudy" }).SequenceEqual([216, 9]), "result ordering preserves input order policy");
+    Assert(!ReportSearchService.TryValidateCriteria(new ReportSearchCriteria
+    {
+        FromDate = new DateTime(2026, 8, 1),
+        ToDate = new DateTime(2026, 7, 1)
+    }, out _), "invalid date criteria are rejected without throwing");
+
     // Baseline Regression Tests
     // These checks define the protected release baseline contract and should not be removed.
     var photoDir = Path.Combine(workspace, "sample_photos");
@@ -993,6 +1100,11 @@ static void AssertFinalFileName(Project project, int reportNumber, string expect
     var fileNameInfo = ProjectLayout.BuildFinalReportFileNameInfo(project, report);
     Assert(fileNameInfo.FileName == expectedFileName, $"final file name matches expected naming contract for report #{reportNumber}");
 }
+
+static IReadOnlyList<int> SearchReportNumbers(IEnumerable<InspectionReport> reports, ReportSearchCriteria criteria)
+    => ReportSearchService.Filter(reports, criteria)
+        .Select(report => report.Number)
+        .ToList();
 
 static void ExpectGenerationFailure(Project project, InspectionReport report, GenerationStage expectedStage, Func<string, bool> messageCheck)
 {

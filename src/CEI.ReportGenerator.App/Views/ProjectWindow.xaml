@@ -220,6 +220,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -229,10 +230,71 @@
                             <TextBlock Text="Inspection Reports" Style="{StaticResource SectionTitleText}"/>
                         </StackPanel>
                     </Border>
-                    <TextBlock x:Name="EmptyReportsText" Grid.Row="1" Margin="10,0,10,6"
+                    <Grid Grid.Row="1" Margin="0,0,0,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <WrapPanel Grid.Row="0" VerticalAlignment="Center">
+                            <Grid Width="240" Margin="0,0,12,0">
+                                <TextBox x:Name="SearchReportsTextBox"
+                                         ToolTip="Search reports..."
+                                         TextChanged="SearchReportsTextBox_TextChanged"
+                                         VerticalContentAlignment="Center"/>
+                                <TextBlock x:Name="SearchWatermarkText"
+                                           Margin="10,0,0,0"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           IsHitTestVisible="False"
+                                           Text="Search reports..."
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                            <TextBlock Text="Status:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox x:Name="StatusFilterComboBox"
+                                      Width="92"
+                                      Margin="0,0,12,0"
+                                      DisplayMemberPath="Label"
+                                      SelectionChanged="FilterControl_SelectionChanged"/>
+                            <TextBlock Text="Weather:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox x:Name="WeatherFilterComboBox"
+                                      Width="132"
+                                      Margin="0,0,12,0"
+                                      DisplayMemberPath="Label"
+                                      SelectionChanged="FilterControl_SelectionChanged"/>
+                            <TextBlock Text="From:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <DatePicker x:Name="FromDatePicker"
+                                        Width="138"
+                                        Margin="0,0,12,0"
+                                        SelectedDateChanged="DateFilter_SelectedDateChanged"/>
+                            <TextBlock Text="To:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <DatePicker x:Name="ToDatePicker"
+                                        Width="138"
+                                        Margin="0,0,12,0"
+                                        SelectedDateChanged="DateFilter_SelectedDateChanged"/>
+                            <Button x:Name="ClearFiltersButton"
+                                    Padding="10,5"
+                                    Click="ClearFiltersButton_Click"
+                                    ToolTip="Clear search and filters">
+                                <TextBlock Text="Clear"/>
+                            </Button>
+                        </WrapPanel>
+                        <Grid Grid.Row="1" Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="FilterValidationText"
+                                       Foreground="{StaticResource StatusWarningBrush}"
+                                       Visibility="Collapsed"/>
+                            <TextBlock x:Name="FilteredResultsText"
+                                       Grid.Column="1"
+                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </Grid>
+                    <TextBlock x:Name="EmptyReportsText" Grid.Row="2" Margin="10,0,10,6"
                                Foreground="{StaticResource SecondaryTextBrush}" Visibility="Collapsed"
                                Text="No reports have been created for this project."/>
-                    <DataGrid x:Name="ReportsGrid" Grid.Row="2"
+                    <DataGrid x:Name="ReportsGrid" Grid.Row="3"
                               IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
                               SelectionMode="Single" HeadersVisibility="Column"
                               MouseDoubleClick="ReportsGrid_MouseDoubleClick"
