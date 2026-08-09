@@ -17,8 +17,10 @@ public partial class ProjectWindow : Window
 
     private readonly Project _project;
     private readonly DispatcherTimer _searchDebounceTimer;
+    private ProjectWorkspace _currentWorkspace = ProjectWorkspace.Reports;
     private bool _reportLoadWarningShown;
     private ReportStore.ReportLoadResult _currentLoadResult = new(Array.Empty<InspectionReport>(), Array.Empty<ReportStore.ReportLoadIssue>());
+    private IReadOnlyList<InspectionReport> _lastValidSearchResults = Array.Empty<InspectionReport>();
     private ProjectDashboardSummary _dashboardSummary = new()
     {
         ProjectName = string.Empty,
@@ -57,6 +59,20 @@ public partial class ProjectWindow : Window
             return;
         }
 
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.D1)
+        {
+            SetWorkspace(ProjectWorkspace.Reports);
+            e.Handled = true;
+            return;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.D2)
+        {
+            SetWorkspace(ProjectWorkspace.Search);
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.S)
         {
             OpenProjectSettings();
@@ -90,7 +106,10 @@ public partial class ProjectWindow : Window
             return;
         }
 
-        ApplyReportFilters();
+        if (_currentWorkspace == ProjectWorkspace.Search)
+        {
+            ApplyReportFilters();
+        }
     }
 
     private void DateFilter_SelectedDateChanged(object? sender, SelectionChangedEventArgs e)
@@ -100,7 +119,10 @@ public partial class ProjectWindow : Window
             return;
         }
 
-        ApplyReportFilters();
+        if (_currentWorkspace == ProjectWorkspace.Search)
+        {
+            ApplyReportFilters();
+        }
     }
 
     private void ClearFiltersButton_Click(object sender, RoutedEventArgs e)
@@ -113,7 +135,20 @@ public partial class ProjectWindow : Window
         ToDatePicker.SelectedDate = null;
         _searchDebounceTimer.Stop();
         RefreshSearchWatermark();
-        ApplyReportFilters();
+        if (_currentWorkspace == ProjectWorkspace.Search)
+        {
+            ApplyReportFilters();
+        }
+    }
+
+    private void ReportsWorkspaceToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetWorkspace(ProjectWorkspace.Reports);
+    }
+
+    private void SearchWorkspaceToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetWorkspace(ProjectWorkspace.Search);
     }
 
     private void NewReportButton_Click(object sender, RoutedEventArgs e)
@@ -264,7 +299,7 @@ public partial class ProjectWindow : Window
         RefreshReportCounts();
         RefreshStatusBar();
         RefreshReportLoadWarning();
-        ApplyReportFilters(preserveCurrentResultsWhenInvalid: false);
+        ApplyWorkspace(preserveCurrentResultsWhenInvalid: false);
     }
 
     private void RefreshProjectHeader()
@@ -310,33 +345,44 @@ public partial class ProjectWindow : Window
         WeatherFilterComboBox.SelectedIndex = 0;
 
         RefreshSearchWatermark();
+        ReportsWorkspaceToggleButton.IsChecked = true;
     }
 
     private void SearchDebounceTimer_Tick(object? sender, EventArgs e)
     {
         _searchDebounceTimer.Stop();
-        ApplyReportFilters();
+        if (_currentWorkspace == ProjectWorkspace.Search)
+        {
+            ApplyReportFilters();
+        }
     }
 
     private void ApplyReportFilters(bool preserveCurrentResultsWhenInvalid = true)
     {
+        if (_currentWorkspace != ProjectWorkspace.Search)
+        {
+            return;
+        }
+
         var previousSelectionNumber = GetSelectedReportItem()?.Report.Number;
         var criteria = BuildCurrentSearchCriteria();
         if (!ReportSearchService.TryValidateCriteria(criteria, out var validationMessage))
         {
             FilterValidationText.Text = validationMessage;
             FilterValidationText.Visibility = Visibility.Visible;
-            if (preserveCurrentResultsWhenInvalid)
+            if (preserveCurrentResultsWhenInvalid && _lastValidSearchResults.Count > 0)
             {
+                BindReportItems(_lastValidSearchResults, previousSelectionNumber);
+                UpdateSearchWorkspaceEmptyState(_lastValidSearchResults.Count);
                 return;
             }
 
-            criteria = new ReportSearchCriteria
-            {
-                SearchText = SearchReportsTextBox.Text,
-                Status = GetSelectedStatus(),
-                Weather = GetSelectedWeather()
-            };
+            var fallbackReports = _lastValidSearchResults.Count > 0
+                ? _lastValidSearchResults
+                : _currentLoadResult.Reports.OrderByDescending(r => r.Number).ToList();
+            BindReportItems(fallbackReports, previousSelectionNumber);
+            UpdateSearchWorkspaceEmptyState(fallbackReports.Count);
+            return;
         }
         else
         {
@@ -346,15 +392,9 @@ public partial class ProjectWindow : Window
         var filteredReports = ReportSearchService.Filter(
             _currentLoadResult.Reports.OrderByDescending(r => r.Number),
             criteria);
-        var items = filteredReports
-            .Select(r => new ReportListItem(_project, r))
-            .ToList();
-
-        ReportsGrid.ItemsSource = items;
-        UpdateResultCountText(filteredReports.Count, _currentLoadResult.Reports.Count);
-        UpdateEmptyState(filteredReports.Count);
-        RestoreSelection(previousSelectionNumber);
-        UpdateReportSelectionState();
+        _lastValidSearchResults = filteredReports;
+        BindReportItems(filteredReports, previousSelectionNumber);
+        UpdateSearchWorkspaceEmptyState(filteredReports.Count);
     }
 
     private ReportSearchCriteria BuildCurrentSearchCriteria()
@@ -384,7 +424,7 @@ public partial class ProjectWindow : Window
             : $"Showing {filteredCount} of {totalCount} reports";
     }
 
-    private void UpdateEmptyState(int filteredCount)
+    private void UpdateSearchWorkspaceEmptyState(int filteredCount)
     {
         if (_dashboardSummary.TotalReports == 0)
         {
@@ -396,6 +436,18 @@ public partial class ProjectWindow : Window
         if (filteredCount == 0)
         {
             EmptyReportsText.Text = "No reports match the current search and filters.";
+            EmptyReportsText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        EmptyReportsText.Visibility = Visibility.Collapsed;
+    }
+
+    private void UpdateReportsWorkspaceEmptyState()
+    {
+        if (_dashboardSummary.TotalReports == 0)
+        {
+            EmptyReportsText.Text = "No reports have been created for this project.";
             EmptyReportsText.Visibility = Visibility.Visible;
             return;
         }
@@ -421,6 +473,51 @@ public partial class ProjectWindow : Window
         SearchWatermarkText.Visibility = string.IsNullOrWhiteSpace(SearchReportsTextBox.Text)
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void ApplyWorkspace(bool preserveCurrentResultsWhenInvalid = true)
+    {
+        ReportsWorkspaceToggleButton.IsChecked = _currentWorkspace == ProjectWorkspace.Reports;
+        SearchWorkspaceToggleButton.IsChecked = _currentWorkspace == ProjectWorkspace.Search;
+        ReportsWorkspaceToolbar.Visibility = _currentWorkspace == ProjectWorkspace.Reports ? Visibility.Visible : Visibility.Collapsed;
+        SearchWorkspaceToolbar.Visibility = _currentWorkspace == ProjectWorkspace.Search ? Visibility.Visible : Visibility.Collapsed;
+
+        FilteredResultsText.Visibility = _currentWorkspace == ProjectWorkspace.Search ? Visibility.Visible : Visibility.Collapsed;
+        FilterValidationText.Visibility = _currentWorkspace == ProjectWorkspace.Search && FilterValidationText.Visibility == Visibility.Visible
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (_currentWorkspace == ProjectWorkspace.Reports)
+        {
+            BindReportItems(_currentLoadResult.Reports.OrderByDescending(r => r.Number), GetSelectedReportItem()?.Report.Number);
+            UpdateReportsWorkspaceEmptyState();
+            Dispatcher.BeginInvoke(() => ReportsGrid.Focus(), DispatcherPriority.Input);
+            return;
+        }
+
+        ApplyReportFilters(preserveCurrentResultsWhenInvalid);
+        Dispatcher.BeginInvoke(() => SearchReportsTextBox.Focus(), DispatcherPriority.Input);
+    }
+
+    private void SetWorkspace(ProjectWorkspace workspace)
+    {
+        if (_currentWorkspace == workspace)
+        {
+            ApplyWorkspace();
+            return;
+        }
+
+        _currentWorkspace = workspace;
+        ApplyWorkspace();
+    }
+
+    private void BindReportItems(IEnumerable<InspectionReport> reports, int? previousSelectionNumber)
+    {
+        ReportsGrid.ItemsSource = reports
+            .Select(r => new ReportListItem(_project, r))
+            .ToList();
+        RestoreSelection(previousSelectionNumber);
+        UpdateReportSelectionState();
     }
 
     private void RefreshReadinessPanel()
@@ -685,8 +782,10 @@ public partial class ProjectWindow : Window
     private void UpdateReportSelectionState()
     {
         var hasSelection = GetSelectedReportItem() is not null;
-        OpenReportButton.IsEnabled = hasSelection;
-        ReportFolderButton.IsEnabled = hasSelection;
+        WorkspaceOpenReportButton.IsEnabled = hasSelection;
+        WorkspaceOpenFolderButton.IsEnabled = hasSelection;
+        WorkspaceNewFromSelectedButton.IsEnabled = hasSelection;
+        WorkspaceDeleteReportButton.IsEnabled = hasSelection;
         OpenSelectedReportMenuItem.IsEnabled = hasSelection;
         OpenSelectedReportFolderMenuItem.IsEnabled = hasSelection;
         NewReportFromSelectedMenuItem.IsEnabled = hasSelection;
@@ -841,6 +940,12 @@ public partial class ProjectWindow : Window
 
         public static FilterOption ForWeather(string label, string? weather)
             => new(label, null, weather);
+    }
+
+    private enum ProjectWorkspace
+    {
+        Reports,
+        Search
     }
 
     private sealed record ReadinessPresentation(

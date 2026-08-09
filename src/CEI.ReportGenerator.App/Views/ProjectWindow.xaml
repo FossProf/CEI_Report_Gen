@@ -5,6 +5,42 @@
         Height="650" Width="880"
         WindowStartupLocation="CenterOwner"
         PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <Style x:Key="WorkspaceToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource PrimaryAccentBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource PrimaryAccentBrush}"/>
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="Background" Value="{StaticResource HoverBrush}"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource HoverBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
     <DockPanel Background="{StaticResource AppBackgroundBrush}">
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
@@ -103,7 +139,6 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0" Style="{StaticResource PanelCardStyle}">
@@ -180,25 +215,157 @@
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="1" Margin="0,12,0,12">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="NewReportButton" Width="136" Padding="8,5"
-                            FontWeight="SemiBold" Style="{StaticResource PrimaryButton}" Click="NewReportButton_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <Path Data="{StaticResource IconPlusCircleGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
-                            <TextBlock Text="New Report"/>
-                        </StackPanel>
-                    </Button>
-                    <TextBlock x:Name="LoadIssuesText" Margin="12,0,0,0" Foreground="{StaticResource StatusWarningBrush}"
-                               VerticalAlignment="Center" Visibility="Collapsed"/>
-                </StackPanel>
-            </StackPanel>
-
-            <Border Grid.Row="2" Style="{StaticResource PanelCardStyle}">
+            <Border Grid.Row="1" Style="{StaticResource PanelCardStyle}" Margin="0,12,0,12">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" LastChildFill="False">
+                        <Border DockPanel.Dock="Left" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="5" Padding="2">
+                            <StackPanel Orientation="Horizontal">
+                                <ToggleButton x:Name="ReportsWorkspaceToggleButton"
+                                              Style="{StaticResource WorkspaceToggleStyle}"
+                                              Content="Reports"
+                                              Click="ReportsWorkspaceToggleButton_Click"
+                                              AutomationProperties.Name="Reports workspace"/>
+                                <ToggleButton x:Name="SearchWorkspaceToggleButton"
+                                              Style="{StaticResource WorkspaceToggleStyle}"
+                                              Content="Search"
+                                              Click="SearchWorkspaceToggleButton_Click"
+                                              AutomationProperties.Name="Search workspace"/>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock x:Name="LoadIssuesText"
+                                   DockPanel.Dock="Right"
+                                   Margin="12,0,0,0"
+                                   Foreground="{StaticResource StatusWarningBrush}"
+                                   VerticalAlignment="Center"
+                                   Visibility="Collapsed"/>
+                    </DockPanel>
+
+                    <Grid Grid.Row="1" Margin="0,10,0,0">
+                        <StackPanel x:Name="ReportsWorkspaceToolbar" Orientation="Horizontal" Visibility="Collapsed">
+                            <Button x:Name="NewReportButton" Width="136" Margin="0,0,8,0" Padding="8,5"
+                                    FontWeight="SemiBold" Style="{StaticResource PrimaryButton}" Click="NewReportButton_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{StaticResource IconPlusCircleGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="New Report"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="WorkspaceOpenReportButton" Width="112" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource SecondaryButton}"
+                                    Click="OpenReportButton_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{StaticResource IconFileEarmarkTextGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Open"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="WorkspaceOpenFolderButton" Width="126" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource SecondaryButton}"
+                                    Click="ReportFolderButton_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Open Folder"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="WorkspaceNewFromSelectedButton" Width="168" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource SecondaryButton}"
+                                    Click="NewReportFromSelectedMenuItem_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{StaticResource IconCopyGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="New from Selected"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="WorkspaceDeleteReportButton" Width="112" Padding="8,5" Style="{StaticResource DangerButton}"
+                                    Click="DeleteSelectedReportMenuItem_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{StaticResource IconTrashGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Delete"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <Grid x:Name="SearchWorkspaceToolbar" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBox x:Name="SearchReportsTextBox"
+                                     Grid.Row="0"
+                                     Width="280"
+                                     HorizontalAlignment="Left"
+                                     ToolTip="Search reports..."
+                                     TextChanged="SearchReportsTextBox_TextChanged"
+                                     VerticalContentAlignment="Center"/>
+                            <TextBlock x:Name="SearchWatermarkText"
+                                       Grid.Row="0"
+                                       Margin="10,0,0,0"
+                                       HorizontalAlignment="Left"
+                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                       IsHitTestVisible="False"
+                                       Text="Search reports..."
+                                       VerticalAlignment="Center"/>
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Status" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox x:Name="StatusFilterComboBox"
+                                          Grid.Column="1"
+                                          Margin="0,0,12,0"
+                                          DisplayMemberPath="Label"
+                                          SelectionChanged="FilterControl_SelectionChanged"/>
+                                <TextBlock Grid.Column="2" Text="Weather" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ComboBox x:Name="WeatherFilterComboBox"
+                                          Grid.Column="3"
+                                          Margin="0,0,12,0"
+                                          DisplayMemberPath="Label"
+                                          SelectionChanged="FilterControl_SelectionChanged"/>
+                                <TextBlock Grid.Column="4" Text="From" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <DatePicker x:Name="FromDatePicker"
+                                            Grid.Column="5"
+                                            Margin="0,0,12,0"
+                                            SelectedDateChanged="DateFilter_SelectedDateChanged"/>
+                                <TextBlock Grid.Column="6" Text="To" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <DatePicker x:Name="ToDatePicker"
+                                            Grid.Column="7"
+                                            Margin="0,0,12,0"
+                                            SelectedDateChanged="DateFilter_SelectedDateChanged"/>
+                                <Button x:Name="ClearFiltersButton"
+                                        Grid.Column="8"
+                                        Padding="10,5"
+                                        Margin="0,0,12,0"
+                                        Click="ClearFiltersButton_Click"
+                                        ToolTip="Clear search and filters">
+                                    <TextBlock Text="Clear"/>
+                                </Button>
+                                <StackPanel Grid.Column="9" HorizontalAlignment="Right">
+                                    <TextBlock x:Name="FilteredResultsText"
+                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="FilterValidationText"
+                                               Foreground="{StaticResource StatusWarningBrush}"
+                                               HorizontalAlignment="Right"
+                                               Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="2" Style="{StaticResource PanelCardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
@@ -209,71 +376,10 @@
                             <TextBlock Text="Inspection Reports" Style="{StaticResource SectionTitleText}"/>
                         </StackPanel>
                     </Border>
-                    <Grid Grid.Row="1" Margin="0,0,0,8">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <WrapPanel Grid.Row="0" VerticalAlignment="Center">
-                            <Grid Width="240" Margin="0,0,12,0">
-                                <TextBox x:Name="SearchReportsTextBox"
-                                         ToolTip="Search reports..."
-                                         TextChanged="SearchReportsTextBox_TextChanged"
-                                         VerticalContentAlignment="Center"/>
-                                <TextBlock x:Name="SearchWatermarkText"
-                                           Margin="10,0,0,0"
-                                           Foreground="{StaticResource SecondaryTextBrush}"
-                                           IsHitTestVisible="False"
-                                           Text="Search reports..."
-                                           VerticalAlignment="Center"/>
-                            </Grid>
-                            <TextBlock Text="Status:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <ComboBox x:Name="StatusFilterComboBox"
-                                      Width="92"
-                                      Margin="0,0,12,0"
-                                      DisplayMemberPath="Label"
-                                      SelectionChanged="FilterControl_SelectionChanged"/>
-                            <TextBlock Text="Weather:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <ComboBox x:Name="WeatherFilterComboBox"
-                                      Width="132"
-                                      Margin="0,0,12,0"
-                                      DisplayMemberPath="Label"
-                                      SelectionChanged="FilterControl_SelectionChanged"/>
-                            <TextBlock Text="From:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <DatePicker x:Name="FromDatePicker"
-                                        Width="138"
-                                        Margin="0,0,12,0"
-                                        SelectedDateChanged="DateFilter_SelectedDateChanged"/>
-                            <TextBlock Text="To:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <DatePicker x:Name="ToDatePicker"
-                                        Width="138"
-                                        Margin="0,0,12,0"
-                                        SelectedDateChanged="DateFilter_SelectedDateChanged"/>
-                            <Button x:Name="ClearFiltersButton"
-                                    Padding="10,5"
-                                    Click="ClearFiltersButton_Click"
-                                    ToolTip="Clear search and filters">
-                                <TextBlock Text="Clear"/>
-                            </Button>
-                        </WrapPanel>
-                        <Grid Grid.Row="1" Margin="0,6,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="FilterValidationText"
-                                       Foreground="{StaticResource StatusWarningBrush}"
-                                       Visibility="Collapsed"/>
-                            <TextBlock x:Name="FilteredResultsText"
-                                       Grid.Column="1"
-                                       Foreground="{StaticResource SecondaryTextBrush}"
-                                       VerticalAlignment="Center"/>
-                        </Grid>
-                    </Grid>
-                    <TextBlock x:Name="EmptyReportsText" Grid.Row="2" Margin="10,0,10,6"
+                    <TextBlock x:Name="EmptyReportsText" Grid.Row="1" Margin="10,0,10,6"
                                Foreground="{StaticResource SecondaryTextBrush}" Visibility="Collapsed"
                                Text="No reports have been created for this project."/>
-                    <DataGrid x:Name="ReportsGrid" Grid.Row="3"
+                    <DataGrid x:Name="ReportsGrid" Grid.Row="2"
                               IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
                               SelectionMode="Single" HeadersVisibility="Column"
                               MouseDoubleClick="ReportsGrid_MouseDoubleClick"
@@ -322,37 +428,6 @@
                     </DataGrid>
                 </Grid>
             </Border>
-
-            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button x:Name="OpenReportButton" Width="122" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource SecondaryButton}"
-                        Click="OpenReportButton_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Data="{StaticResource IconFileEarmarkTextGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
-                        <TextBlock Text="Open Report"/>
-                    </StackPanel>
-                </Button>
-                <Button x:Name="ReportFolderButton" Width="126" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource SecondaryButton}"
-                        Click="ReportFolderButton_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
-                        <TextBlock Text="Report Folder"/>
-                    </StackPanel>
-                </Button>
-                <Button x:Name="EditProjectButton" Width="118" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource QuietButton}"
-                        Click="EditProjectButton_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Data="{StaticResource IconPencilGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
-                        <TextBlock Text="Edit Project"/>
-                    </StackPanel>
-                </Button>
-                <Button x:Name="ProjectFolderButton" Width="126" Padding="8,5" Style="{StaticResource QuietButton}"
-                        Click="ProjectFolderButton_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
-                        <TextBlock Text="Project Folder"/>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
         </Grid>
     </DockPanel>
 </Window>
