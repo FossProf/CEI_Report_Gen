@@ -16,6 +16,10 @@ public static class ProjectLayout
 
     public const string ReportsFolderName = "Reports";
 
+    public const string ReportJsonFileName = "report.json";
+
+    public const string ImportMetadataFileName = "import-metadata.json";
+
     public const string SignaturesFolderName = "Signatures";
 
     public const string PhotosFolderName = "photos";
@@ -33,7 +37,10 @@ public static class ProjectLayout
         => Path.Combine(ReportsFolder(project), FormatReportNumber(reportNumber));
 
     public static string ReportFilePath(Project project, int reportNumber)
-        => Path.Combine(ReportFolder(project, reportNumber), "report.json");
+        => Path.Combine(ReportFolder(project, reportNumber), ReportJsonFileName);
+
+    public static string ImportMetadataPath(Project project, int reportNumber)
+        => Path.Combine(ReportFolder(project, reportNumber), ImportMetadataFileName);
 
     public static string ReportPhotosFolder(Project project, int reportNumber)
         => Path.Combine(ReportFolder(project, reportNumber), PhotosFolderName);

@@ -15,6 +15,8 @@ This folder is the primary documentation suite for the current SPINgen baseline.
 - [Template Guide](TemplateGuide.md)
 - [Report Lifecycle](ReportLifecycle.md)
 - [Search Guide](SearchGuide.md)
+- [Import Contract](ImportContract.md)
+- [Historical Importer Roadmap](HistoricalImporterRoadmap.md)
 
 ## Project and Data Contracts
 

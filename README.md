@@ -20,6 +20,8 @@ runtime/user data and must not be committed to the repository.
 - [Project Structure](docs/ProjectStructure.md)
 - [Report Lifecycle](docs/ReportLifecycle.md)
 - [Search Guide](docs/SearchGuide.md)
+- [Import Contract](docs/ImportContract.md)
+- [Historical Importer Roadmap](docs/HistoricalImporterRoadmap.md)
 - [Developer Architecture](docs/DeveloperArchitecture.md)
 - [Template Contract](docs/TemplateContract.md)
 - [Project Schema](docs/project-schema.md)

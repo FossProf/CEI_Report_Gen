@@ -1197,6 +1197,188 @@ try
     var rollbackLoadedReport = ReportStore.LoadReport(rollbackProject, 1);
     Assert(rollbackLoadedReport is null || rollbackLoadedReport.Status != ReportStatus.Final, "report.json not left finalized after rollback");
 
+    Console.WriteLine("\n== Historical report search-index import contract ==");
+    var historicalImportProject = ProjectStore.Create(
+        Path.Combine(workspace, "historical_import_project"), "Historical Search", "2160", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    for (var i = 1; i <= 25; i++)
+    {
+        ReportStore.SaveReport(historicalImportProject, MakeReport(historicalImportProject, i, 0, "Sunny", photoFiles));
+    }
+
+    var historicalArchiveFolder = Path.Combine(workspace, "historical_archive");
+    Directory.CreateDirectory(historicalArchiveFolder);
+    var historicalSourceDocx = Path.Combine(historicalArchiveFolder, "2025-07-10 CMF Structural Repairs SPIN Report #216.docx");
+    File.Copy(templatePath, historicalSourceDocx);
+
+    var historicalImportRequest = new HistoricalReportImportRequest
+    {
+        Number = 216,
+        Date = new DateTime(2025, 7, 10),
+        Temperature = "85",
+        Weather = "Partly Cloudy",
+        Locations = "Gridline 2",
+        Inspectors = "Anthony Wintergerst",
+        PersonnelOnSite = "CMU Crew",
+        DescriptionOfWork = "CMU lintel reinforcement review.",
+        DrawingsReviewed = "HX-216",
+        Observations = "CMU lintel reinforcement and horizontal ladder reinforcing were reviewed.",
+        NewDiscrepancies = string.Empty,
+        PreviousDiscrepancies = string.Empty,
+        SourceDocumentPath = historicalSourceDocx,
+        SourceCreatedUtc = new DateTime(2025, 7, 10, 14, 0, 0, DateTimeKind.Utc)
+    };
+
+    var historicalImportResult = HistoricalReportImportService.Import(historicalImportProject, historicalImportRequest);
+    Assert(historicalImportResult.Status == HistoricalReportImportStatus.Imported, "historical import returns Imported status");
+    Assert(historicalImportResult.Report is not null, "historical import returns the normalized report");
+    Assert(Directory.Exists(historicalImportResult.ReportFolder), "historical import creates the canonical report folder");
+    Assert(File.Exists(historicalImportResult.ReportJsonPath), "historical import writes report.json");
+    Assert(File.Exists(historicalImportResult.ImportMetadataPath), "historical import writes import-metadata.json");
+    Assert(!Directory.EnumerateFiles(historicalImportResult.ReportFolder, "*.docx", SearchOption.TopDirectoryOnly).Any(), "historical import does not copy a DOCX into the report folder");
+
+    var importedHistoricalReport = ReportStore.LoadReport(historicalImportProject, 216);
+    Assert(importedHistoricalReport is not null, "historical import report reloads from report.json");
+    Assert(importedHistoricalReport!.Status == ReportStatus.Final, "historical import persists Final status");
+    Assert(string.IsNullOrWhiteSpace(importedHistoricalReport.OutputFileName), "historical import keeps OutputFileName empty when no local DOCX exists");
+    Assert(importedHistoricalReport.Photos.Count == 0, "historical import stores no photos in the pilot slice");
+    Assert(importedHistoricalReport.CreatedUtc == historicalImportRequest.SourceCreatedUtc, "historical import uses SourceCreatedUtc when provided");
+
+    var historicalMetadata = JsonStore.Load<HistoricalImportMetadata>(historicalImportResult.ImportMetadataPath);
+    Assert(historicalMetadata is not null, "historical import metadata reloads");
+    Assert(historicalMetadata!.SourceFileName == Path.GetFileName(historicalSourceDocx), "historical import metadata stores source file name");
+    Assert(historicalMetadata.SourcePathAtImport == historicalSourceDocx, "historical import metadata stores source path provenance");
+    Assert(historicalMetadata.SourceSha256 == FileHash(historicalSourceDocx).ToLowerInvariant(), "historical import metadata stores source SHA-256");
+    Assert(historicalMetadata.ParserProfile == HistoricalReportImportService.DefaultParserProfile, "historical import metadata stores parser profile");
+    Assert(historicalMetadata.ContractVersion == HistoricalReportImportService.ContractVersion, "historical import metadata stores contract version");
+    Assert(historicalMetadata.Warnings.Count == 0, "historical import metadata starts with no warnings");
+
+    var historicalLoadResult = ReportStore.LoadAllReports(historicalImportProject);
+    Assert(historicalLoadResult.Reports.Any(r => r.Number == 216), "historical import loads through ReportStore.LoadAllReports");
+    Assert(SearchReportNumbers(historicalLoadResult.Reports, new ReportSearchCriteria { SearchText = "lintel" }).SequenceEqual([216]), "historical import is searchable by observations content");
+    Assert(SearchReportNumbers(historicalLoadResult.Reports, new ReportSearchCriteria { SearchText = "ladder reinforcing" }).SequenceEqual([216]), "historical import matches multi-word observations search");
+    Assert(SearchReportNumbers(historicalLoadResult.Reports, new ReportSearchCriteria { SearchText = "Gridline 2" }).SequenceEqual([216]), "historical import is searchable by location");
+    Assert(SearchReportNumbers(historicalLoadResult.Reports, new ReportSearchCriteria { SearchText = "CMU Crew" }).SequenceEqual([216]), "historical import is searchable by personnel");
+    Assert(SearchReportNumbers(historicalLoadResult.Reports, new ReportSearchCriteria { SearchText = "HX-216" }).SequenceEqual([216]), "historical import is searchable by drawings reviewed");
+
+    var historicalMatch = ReportMatchSnippetBuilder.Build(importedHistoricalReport, "ladder reinforcing");
+    Assert(historicalMatch is not null, "historical import produces a normal match snippet");
+    Assert(historicalMatch!.MatchField == "Observations", "historical import match snippet uses the normal field-priority rules");
+    Assert(historicalMatch.MatchDisplay.Contains("ladder reinforcing", StringComparison.OrdinalIgnoreCase), "historical import match snippet includes the search text");
+
+    var historicalSummary = ProjectDashboardSummaryBuilder.Build(historicalImportProject, historicalLoadResult);
+    Assert(historicalSummary.TotalReports == 26, "historical import counts toward total reports");
+    Assert(historicalSummary.FinalReports == 1, "historical import counts toward final reports");
+    Assert(historicalSummary.NextReportNumber == 217, "historical import advances authoritative next report number beyond imported history");
+    Assert(ReportStore.GetNextReportNumber(historicalImportProject) == 217, "historical import updates next-number collision protection");
+    Assert(ReportDraftFactory.CreateBlank(historicalImportProject).Number == 217, "new blank report after import avoids imported report-number collisions");
+
+    var historicalNewFromSelected = ReportDraftFactory.CreateFromExisting(historicalImportProject, importedHistoricalReport);
+    Assert(historicalNewFromSelected.Number == 217, "New Report from Selected uses the next safe number after historical import");
+    Assert(historicalNewFromSelected.Locations == importedHistoricalReport.Locations, "New Report from Selected copies imported historical locations");
+    Assert(historicalNewFromSelected.DescriptionOfWork == importedHistoricalReport.DescriptionOfWork, "New Report from Selected copies imported historical work description");
+    Assert(historicalNewFromSelected.Photos.Count == 0, "New Report from Selected from historical import still starts with empty photos");
+
+    var historicalReportJsonBeforeCollision = File.ReadAllBytes(historicalImportResult.ReportJsonPath);
+    var historicalCollisionSourceDocx = Path.Combine(historicalArchiveFolder, "2025-07-10 Duplicate Historical Report #216.docx");
+    File.Copy(templatePath, historicalCollisionSourceDocx);
+    var historicalCollisionResult = HistoricalReportImportService.Import(
+        historicalImportProject,
+        historicalImportRequest with { SourceDocumentPath = historicalCollisionSourceDocx });
+    Assert(historicalCollisionResult.Status == HistoricalReportImportStatus.ReportAlreadyExists, "historical import returns a controlled collision when report number already exists");
+    Assert(File.ReadAllBytes(historicalImportResult.ReportJsonPath).SequenceEqual(historicalReportJsonBeforeCollision), "historical collision leaves the original imported report.json unchanged");
+
+    var historicalConflictProject = ProjectStore.Create(
+        Path.Combine(workspace, "historical_import_conflict"), "Historical Conflict", "2161", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var historicalConflictFolder = ProjectLayout.ReportFolder(historicalConflictProject, 217);
+    Directory.CreateDirectory(historicalConflictFolder);
+    File.WriteAllText(Path.Combine(historicalConflictFolder, "notes.txt"), "unexpected content");
+    var historicalFolderConflict = HistoricalReportImportService.Import(
+        historicalConflictProject,
+        historicalImportRequest with
+        {
+            Number = 217,
+            SourceDocumentPath = historicalCollisionSourceDocx
+        });
+    Assert(historicalFolderConflict.Status == HistoricalReportImportStatus.FolderConflict, "historical import returns a controlled folder conflict when canonical folder already exists");
+
+    File.Delete(historicalSourceDocx);
+    var historicalReloadedProject = ProjectStore.Load(historicalImportProject.FolderPath)!;
+    var historicalReloadedResult = ReportStore.LoadAllReports(historicalReloadedProject);
+    Assert(historicalReloadedResult.Reports.Any(r => r.Number == 216), "historical import still loads after the source archive document is removed");
+    Assert(SearchReportNumbers(historicalReloadedResult.Reports, new ReportSearchCriteria { SearchText = "ladder reinforcing" }).SequenceEqual([216]), "historical search remains independent of source archive availability");
+    var historicalReloadedSummary = ProjectDashboardSummaryBuilder.Build(historicalReloadedProject, historicalReloadedResult);
+    Assert(historicalReloadedSummary.TotalReports == 26 && historicalReloadedSummary.FinalReports == 1, "historical import still counts correctly after archive removal");
+
+    Console.WriteLine("\n== Historical import delete does not touch archive ==");
+    var deleteImportedProject = ProjectStore.Create(
+        Path.Combine(workspace, "historical_delete_project"), "Historical Delete", "2162", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var deleteImportedArchiveFolder = Path.Combine(workspace, "historical_delete_archive");
+    Directory.CreateDirectory(deleteImportedArchiveFolder);
+    var deleteImportedSourceDocx = Path.Combine(deleteImportedArchiveFolder, "2025-07-11 Historical Delete Report #44.docx");
+    File.Copy(templatePath, deleteImportedSourceDocx);
+    var deleteImportedResult = HistoricalReportImportService.Import(
+        deleteImportedProject,
+        new HistoricalReportImportRequest
+        {
+            Number = 44,
+            Date = new DateTime(2025, 7, 11),
+            Weather = "Rainy",
+            Locations = "Pier 3",
+            Inspectors = "Anthony Wintergerst",
+            PersonnelOnSite = "Repair Crew",
+            DescriptionOfWork = "Sealant and patch verification.",
+            DrawingsReviewed = "SK-44",
+            Observations = "Historical import delete behavior test.",
+            SourceDocumentPath = deleteImportedSourceDocx
+        });
+    Assert(deleteImportedResult.Status == HistoricalReportImportStatus.Imported, "historical delete test import succeeds");
+    Assert(ReportStore.DeleteReport(deleteImportedProject, 44) == ReportStore.DeleteReportStatus.Deleted, "historical imported report deletes through the normal delete path");
+    Assert(!Directory.Exists(deleteImportedResult.ReportFolder), "historical delete removes the canonical report folder");
+    Assert(File.Exists(deleteImportedSourceDocx), "historical delete does not delete the source archive DOCX");
+
+    Console.WriteLine("\n== Historical import staging failure leaves no visible report ==");
+    var historicalStagingProject = ProjectStore.Create(
+        Path.Combine(workspace, "historical_staging_project"), "Historical Staging", "2163", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var historicalStagingArchiveFolder = Path.Combine(workspace, "historical_staging_archive");
+    Directory.CreateDirectory(historicalStagingArchiveFolder);
+    var historicalStagingSourceDocx = Path.Combine(historicalStagingArchiveFolder, "2025-07-12 Historical Staging Report #88.docx");
+    File.Copy(templatePath, historicalStagingSourceDocx);
+    HistoricalReportImportService.StageFailureHookForTesting = _ => new IOException("Injected historical import staging failure.");
+    try
+    {
+        ExpectActionFailure(
+            () => HistoricalReportImportService.Import(
+                historicalStagingProject,
+                new HistoricalReportImportRequest
+                {
+                    Number = 88,
+                    Date = new DateTime(2025, 7, 12),
+                    Weather = "Cloudy",
+                    Locations = "Gridline 8",
+                    Inspectors = "Anthony Wintergerst",
+                    PersonnelOnSite = "Historical Crew",
+                    DescriptionOfWork = "Historical staging failure test.",
+                    DrawingsReviewed = "SK-88",
+                    Observations = "Historical staging failure test observations.",
+                    SourceDocumentPath = historicalStagingSourceDocx
+                }),
+            message => message.Contains("staging failure", StringComparison.OrdinalIgnoreCase));
+    }
+    finally
+    {
+        HistoricalReportImportService.StageFailureHookForTesting = null;
+    }
+
+    Assert(!Directory.Exists(ProjectLayout.ReportFolder(historicalStagingProject, 88)), "historical staging failure leaves no canonical report folder");
+    Assert(!Directory.EnumerateDirectories(ProjectLayout.ReportsFolder(historicalStagingProject))
+        .Any(path => Path.GetFileName(path).StartsWith(".importing.", StringComparison.OrdinalIgnoreCase)),
+        "historical staging failure leaves no abandoned importing folder");
+    Assert(!ReportStore.LoadAllReports(historicalStagingProject).Reports.Any(r => r.Number == 88), "historical staging failure leaves no visible report for SPINgen");
+
     Console.WriteLine("\n== Malformed report.json does not block valid reports ==");
     var malformedProject = ProjectStore.Create(
         Path.Combine(workspace, "malformed_project"), "Malformed", "19", "Owner", "CM", "GC",

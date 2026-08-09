@@ -1046,7 +1046,9 @@ public partial class ProjectWindow : Window
             ? string.Empty
             : $"{SearchResult.MatchField}{Environment.NewLine}{Environment.NewLine}{SearchResult.MatchFullText}";
         public string FileName => string.IsNullOrWhiteSpace(Report.OutputFileName)
-            ? ProjectLayout.DefaultReportFileName(Project, Report)
+            ? Report.Status == ReportStatus.Final
+                ? "No local DOCX stored"
+                : ProjectLayout.DefaultReportFileName(Project, Report)
             : Report.OutputFileName;
         public int PhotosCount => Report.Photos.Count;
     }
