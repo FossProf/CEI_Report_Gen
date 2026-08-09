@@ -395,6 +395,82 @@ try
         ToDate = new DateTime(2026, 7, 1)
     }, out _), "invalid date criteria are rejected without throwing");
 
+    Console.WriteLine("\n== Report match snippet builder ==");
+    var snippetReport = new InspectionReport
+    {
+        Number = 216,
+        Date = new DateTime(2026, 7, 15),
+        Observations = "Cornerstone reviewed the CMU lintel reinforcement before concrete placement at Gridline 2.\r\nAll work was acceptable.",
+        NewDiscrepancies = "Lintel bearing at the east opening should be rechecked.",
+        PreviousDiscrepancies = "Previous lintel deficiency has been corrected.",
+        DescriptionOfWork = "Concrete placement for intermediate columns and lintel reinforcing review.",
+        Locations = "Gridline 2 east elevation.",
+        DrawingsReviewed = "S-201 lintel detail.",
+        PersonnelOnSite = "Pace and crew on site.",
+        Inspectors = "Anthony Pace CWI",
+        Weather = "Cloudy",
+        Temperature = "92F",
+        OutputFileName = "2026-07-15 Sample Project SPIN Report #216.docx",
+        Photos =
+        [
+            new Photo { Caption = "Lintel reinforcing photo marker 17" }
+        ]
+    };
+
+    var observationPriorityResult = ReportMatchSnippetBuilder.Build(snippetReport, "lintel");
+    Assert(observationPriorityResult is not null, "snippet builder returns a result for matching keyword");
+    Assert(observationPriorityResult!.MatchField == "Observations", "Observations are preferred over Description of Work when both match");
+
+    var discrepancyPriorityResult = ReportMatchSnippetBuilder.Build(snippetReport, "bearing");
+    Assert(discrepancyPriorityResult is not null && discrepancyPriorityResult.MatchField == "New Discrepancies", "new discrepancies outrank previous discrepancies");
+
+    var locationResult = ReportMatchSnippetBuilder.Build(snippetReport, "east elevation");
+    Assert(locationResult is not null && locationResult.MatchField == "Location", "location snippet uses the user-facing Location field name");
+
+    var photoCaptionResult = ReportMatchSnippetBuilder.Build(snippetReport, "marker 17");
+    Assert(photoCaptionResult is not null && photoCaptionResult.MatchField == "Photo Caption", "photo caption can provide search-result context");
+
+    var reportNumberResult = ReportMatchSnippetBuilder.Build(snippetReport, "0216");
+    Assert(reportNumberResult is not null && reportNumberResult.MatchField == "Report Number", "report-number match returns report-number context");
+
+    var multilineResult = ReportMatchSnippetBuilder.Build(snippetReport, "acceptable");
+    Assert(multilineResult is not null && !multilineResult.MatchFullText.Contains('\n'), "multiline match text is normalized into spaces");
+
+    var beginningResult = ReportMatchSnippetBuilder.Build(
+        new InspectionReport { Observations = "Lintel repair was reviewed immediately.", Number = 1, Date = new DateTime(2026, 7, 1) },
+        "lintel");
+    Assert(beginningResult is not null && !beginningResult.MatchSnippet.StartsWith("...", StringComparison.Ordinal), "snippet near the beginning does not force a leading ellipsis");
+
+    var endResult = ReportMatchSnippetBuilder.Build(
+        new InspectionReport { Observations = "The final noted condition was reinforcing at the lintel", Number = 2, Date = new DateTime(2026, 7, 1) },
+        "lintel");
+    Assert(endResult is not null && !endResult.MatchSnippet.EndsWith("...", StringComparison.Ordinal), "snippet near the end does not force a trailing ellipsis");
+
+    var longFieldResult = ReportMatchSnippetBuilder.Build(
+        new InspectionReport
+        {
+            Observations = "This is a very long observation paragraph that keeps going so the snippet builder has to trim surrounding context while still preserving the lintel match near the middle of the sentence for quick review by the inspector.",
+            Number = 3,
+            Date = new DateTime(2026, 7, 1)
+        },
+        "lintel");
+    Assert(longFieldResult is not null && longFieldResult.MatchSnippet.Length < longFieldResult.MatchFullText.Length, "long match text is truncated into a concise snippet");
+
+    var shortFieldResult = ReportMatchSnippetBuilder.Build(
+        new InspectionReport { Observations = "Lintel reviewed.", Number = 4, Date = new DateTime(2026, 7, 1) },
+        "lintel");
+    Assert(shortFieldResult is not null && shortFieldResult.MatchSnippet == "Lintel reviewed.", "short match text remains intact");
+
+    var caseInsensitiveResult = ReportMatchSnippetBuilder.Build(snippetReport, "cwi");
+    Assert(caseInsensitiveResult is not null && caseInsensitiveResult.MatchField == "Inspector", "snippet matching is case-insensitive");
+
+    var multiWordPriorityResult = ReportMatchSnippetBuilder.Build(snippetReport, "Gridline reinforcement placement");
+    Assert(multiWordPriorityResult is not null && multiWordPriorityResult.MatchField == "Observations", "field containing the most query terms is preferred for multi-word context");
+
+    Assert(snippetReport.Observations.Contains("\r\n", StringComparison.Ordinal), "snippet builder does not mutate the source report");
+    Assert(ReportMatchSnippetBuilder.Build(snippetReport, string.Empty) is null, "filter-only search does not require snippet generation");
+    Assert(ReportMatchSnippetBuilder.Build(new InspectionReport { Number = 5, Date = new DateTime(2026, 7, 1) }, "lintel") is null, "no matching text is handled safely");
+
     // Baseline Regression Tests
     // These checks define the protected release baseline contract and should not be removed.
     var photoDir = Path.Combine(workspace, "sample_photos");

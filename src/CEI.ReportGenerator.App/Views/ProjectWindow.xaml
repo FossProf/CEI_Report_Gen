@@ -294,6 +294,7 @@
                                      Width="280"
                                      HorizontalAlignment="Left"
                                      ToolTip="Search reports..."
+                                     PreviewKeyDown="SearchReportsTextBox_PreviewKeyDown"
                                      TextChanged="SearchReportsTextBox_TextChanged"
                                      VerticalContentAlignment="Center"/>
                             <TextBlock x:Name="SearchWatermarkText"
@@ -367,6 +368,7 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -423,6 +425,16 @@
                             <DataGridTextColumn Header="Date" Binding="{Binding DateText}" Width="120"/>
                             <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
                             <DataGridTextColumn Header="Photos" Binding="{Binding PhotosCount}" Width="80"/>
+                            <DataGridTemplateColumn x:Name="MatchColumn" Header="Match" Width="280">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding MatchDisplay}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding MatchTooltip}"
+                                                   VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>

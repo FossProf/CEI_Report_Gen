@@ -95,8 +95,42 @@ public partial class ProjectWindow : Window
     private void SearchReportsTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         RefreshSearchWatermark();
+        MatchColumn.Visibility = ShouldShowMatchColumn() ? Visibility.Visible : Visibility.Collapsed;
         _searchDebounceTimer.Stop();
         _searchDebounceTimer.Start();
+    }
+
+    private void SearchReportsTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_currentWorkspace != ProjectWorkspace.Search)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            HandleSearchEnterKey();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            _searchDebounceTimer.Stop();
+            SearchReportsTextBox.Text = string.Empty;
+            RefreshSearchWatermark();
+            ApplyReportFilters();
+            SearchReportsTextBox.Focus();
+            SearchReportsTextBox.CaretIndex = 0;
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Down)
+        {
+            FocusGridFirstResult();
+            e.Handled = true;
+        }
     }
 
     private void FilterControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -372,7 +406,7 @@ public partial class ProjectWindow : Window
             FilterValidationText.Visibility = Visibility.Visible;
             if (preserveCurrentResultsWhenInvalid && _lastValidSearchResults.Count > 0)
             {
-                BindReportItems(_lastValidSearchResults, previousSelectionNumber);
+                BindSearchWorkspaceItems(_lastValidSearchResults, previousSelectionNumber);
                 UpdateSearchWorkspaceEmptyState(_lastValidSearchResults.Count);
                 return;
             }
@@ -380,7 +414,7 @@ public partial class ProjectWindow : Window
             var fallbackReports = _lastValidSearchResults.Count > 0
                 ? _lastValidSearchResults
                 : _currentLoadResult.Reports.OrderByDescending(r => r.Number).ToList();
-            BindReportItems(fallbackReports, previousSelectionNumber);
+            BindSearchWorkspaceItems(fallbackReports, previousSelectionNumber);
             UpdateSearchWorkspaceEmptyState(fallbackReports.Count);
             return;
         }
@@ -393,9 +427,28 @@ public partial class ProjectWindow : Window
             _currentLoadResult.Reports.OrderByDescending(r => r.Number),
             criteria);
         _lastValidSearchResults = filteredReports;
-        BindReportItems(filteredReports, previousSelectionNumber);
+        BindSearchWorkspaceItems(filteredReports, previousSelectionNumber);
         UpdateSearchWorkspaceEmptyState(filteredReports.Count);
     }
+
+    private void BindSearchWorkspaceItems(IEnumerable<InspectionReport> reports, int? previousSelectionNumber)
+    {
+        var reportList = reports.ToList();
+        if (ShouldShowMatchColumn())
+        {
+            BindSearchResultItems(BuildSearchResults(reportList), previousSelectionNumber);
+            return;
+        }
+
+        BindReportItems(reportList, previousSelectionNumber);
+    }
+
+    private IReadOnlyList<ReportSearchResult> BuildSearchResults(IEnumerable<InspectionReport> reports)
+        => reports
+            .Select(report => ReportMatchSnippetBuilder.Build(report, SearchReportsTextBox.Text))
+            .Where(result => result is not null)
+            .Cast<ReportSearchResult>()
+            .ToList();
 
     private ReportSearchCriteria BuildCurrentSearchCriteria()
         => new()
@@ -419,9 +472,22 @@ public partial class ProjectWindow : Window
 
     private void UpdateResultCountText(int filteredCount, int totalCount)
     {
+        if (_currentWorkspace != ProjectWorkspace.Search)
+        {
+            FilteredResultsText.Text = string.Empty;
+            return;
+        }
+
+        var criteria = BuildCurrentSearchCriteria();
+        if (!HasAnySearchCriteria(criteria))
+        {
+            FilteredResultsText.Text = $"{totalCount} reports";
+            return;
+        }
+
         FilteredResultsText.Text = filteredCount == 0
             ? "No matching reports"
-            : $"Showing {filteredCount} of {totalCount} reports";
+            : $"{filteredCount} of {totalCount} reports";
     }
 
     private void UpdateSearchWorkspaceEmptyState(int filteredCount)
@@ -486,6 +552,7 @@ public partial class ProjectWindow : Window
         FilterValidationText.Visibility = _currentWorkspace == ProjectWorkspace.Search && FilterValidationText.Visibility == Visibility.Visible
             ? Visibility.Visible
             : Visibility.Collapsed;
+        MatchColumn.Visibility = ShouldShowMatchColumn() ? Visibility.Visible : Visibility.Collapsed;
 
         if (_currentWorkspace == ProjectWorkspace.Reports)
         {
@@ -513,11 +580,58 @@ public partial class ProjectWindow : Window
 
     private void BindReportItems(IEnumerable<InspectionReport> reports, int? previousSelectionNumber)
     {
-        ReportsGrid.ItemsSource = reports
-            .Select(r => new ReportListItem(_project, r))
-            .ToList();
+        BindReportItems(
+            reports.Select(r => new ReportListItem(_project, r, null)).ToList(),
+            previousSelectionNumber);
+    }
+
+    private void BindSearchResultItems(IEnumerable<ReportSearchResult> searchResults, int? previousSelectionNumber)
+    {
+        BindReportItems(
+            searchResults.Select(result => new ReportListItem(_project, result.Report, result)).ToList(),
+            previousSelectionNumber);
+    }
+
+    private void BindReportItems(IReadOnlyList<ReportListItem> items, int? previousSelectionNumber)
+    {
+        ReportsGrid.ItemsSource = items;
         RestoreSelection(previousSelectionNumber);
         UpdateReportSelectionState();
+    }
+
+    private bool ShouldShowMatchColumn()
+        => _currentWorkspace == ProjectWorkspace.Search
+           && !string.IsNullOrWhiteSpace(SearchReportsTextBox.Text);
+
+    private static bool HasAnySearchCriteria(ReportSearchCriteria criteria)
+        => !string.IsNullOrWhiteSpace(criteria.SearchText)
+           || criteria.Status.HasValue
+           || criteria.FromDate.HasValue
+           || criteria.ToDate.HasValue
+           || !string.IsNullOrWhiteSpace(criteria.Weather);
+
+    private void HandleSearchEnterKey()
+    {
+        var visibleItems = (ReportsGrid.ItemsSource as IEnumerable<ReportListItem>)?.ToList() ?? new List<ReportListItem>();
+        if (visibleItems.Count == 1)
+        {
+            ReportsGrid.SelectedItem = visibleItems[0];
+            OpenSelectedReport();
+            return;
+        }
+
+        FocusGridFirstResult();
+    }
+
+    private void FocusGridFirstResult()
+    {
+        if ((ReportsGrid.ItemsSource as IEnumerable<ReportListItem>)?.FirstOrDefault() is not { } firstItem)
+        {
+            return;
+        }
+
+        ReportsGrid.SelectedItem = firstItem;
+        ReportsGrid.Focus();
     }
 
     private void RefreshReadinessPanel()
@@ -922,11 +1036,15 @@ public partial class ProjectWindow : Window
         return count;
     }
 
-    public sealed record ReportListItem(Project Project, InspectionReport Report)
+    public sealed record ReportListItem(Project Project, InspectionReport Report, ReportSearchResult? SearchResult)
     {
         public string Number => ProjectLayout.FormatReportNumber(Report.Number);
         public string DateText => Report.Date.ToString("MMMM d, yyyy");
         public string Status => Report.Status == ReportStatus.Final ? "Final" : "Draft";
+        public string MatchDisplay => SearchResult?.MatchDisplay ?? string.Empty;
+        public string MatchTooltip => SearchResult is null
+            ? string.Empty
+            : $"{SearchResult.MatchField}{Environment.NewLine}{Environment.NewLine}{SearchResult.MatchFullText}";
         public string FileName => string.IsNullOrWhiteSpace(Report.OutputFileName)
             ? ProjectLayout.DefaultReportFileName(Project, Report)
             : Report.OutputFileName;
