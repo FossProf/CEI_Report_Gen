@@ -133,4 +133,4 @@ if ($LASTEXITCODE -ne 0) {
     throw 'MSI build failed.'
 }
 
-Write-Host ('Installer completed: ' + (Join-Path $outputDir 'CEI_Report_Generator_0.1.0-alpha_x64.msi'))
+Write-Host ('Installer completed: ' + (Join-Path $outputDir 'SPINgen_0.2.0-alpha_x64.msi'))

@@ -11,6 +11,7 @@ projects/*
 Signatures/*
 !Signatures/.gitkeep
 *.tmp.docx
+*.finalizing.docx
 generation-error.log
 artifacts/
 *.msi

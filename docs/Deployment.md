@@ -8,7 +8,7 @@
 
 ## Installer Procedure
 
-1. Obtain `CEI_Report_Generator_0.1.0-alpha_x64.msi`.
+1. Obtain `SPINgen_0.2.0-alpha_x64.msi`.
 2. Run the MSI.
 3. Accept the installation prompts.
 4. Launch the application from the Start Menu entry `SPINgen`.
@@ -45,7 +45,7 @@ The application may still let the user choose another writable project folder.
 
 ## SmartScreen Note
 
-This `0.1.0-alpha` build is unsigned.
+This `0.2.0-alpha` build is unsigned.
 
 Windows SmartScreen may warn on first launch or install. Future release engineering can insert code signing at:
 

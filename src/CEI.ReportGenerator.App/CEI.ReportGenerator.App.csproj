@@ -11,9 +11,9 @@
     <Product>SPINgen</Product>
     <AssemblyTitle>SPINgen</AssemblyTitle>
     <Company>Cornerstone Engineering / CEI</Company>
-    <Version>0.1.0</Version>
-    <FileVersion>0.1.0.0</FileVersion>
-    <InformationalVersion>0.1.0-alpha</InformationalVersion>
+    <Version>0.2.0</Version>
+    <FileVersion>0.2.0.0</FileVersion>
+    <InformationalVersion>0.2.0-alpha</InformationalVersion>
     <Description>Windows desktop application for creating standardized SPIN reports.</Description>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>

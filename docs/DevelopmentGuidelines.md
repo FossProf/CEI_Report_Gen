@@ -51,9 +51,19 @@ Future work should not modify these baseline systems unless fixing bugs or inten
 - `ProjectStore`
 - `ReportStore`
 - `JsonStore`
+- `ProjectLayout`
+- `Validation`
+- `TemplateValidator`
 - `TemplateFiller`
 - `ReportGenerator`
+- `SignatureStore`
 - photo storage
+- photo normalization
 - report numbering
+- preview/final lifecycle
+- `ReportDraftFactory` creation semantics
+- project/report JSON contracts
 - template validation
 - OpenXML generation
+
+UI/UX features may still evolve, but they should not modify these areas without a documented reason tied to a real defect or contract change.

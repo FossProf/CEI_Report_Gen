@@ -4,7 +4,7 @@
     <Platform>x64</Platform>
     <InstallerPlatform>x64</InstallerPlatform>
     <Cultures>en-US</Cultures>
-    <OutputName>CEI_Report_Generator_0.1.0-alpha_x64</OutputName>
+    <OutputName>SPINgen_0.2.0-alpha_x64</OutputName>
     <DefineConstants>PublishDir=$(PublishDir);AppIconPath=$(AppIconPath)</DefineConstants>
   </PropertyGroup>
 </Project>

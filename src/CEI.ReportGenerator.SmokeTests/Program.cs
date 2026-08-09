@@ -289,7 +289,7 @@ try
     Assert(duplicatedFromDraft.Status == ReportStatus.Draft, "draft source duplication still starts as draft");
 
     // Baseline Regression Tests
-    // These checks define the v0.1 foundation contract and should not be removed.
+    // These checks define the protected release baseline contract and should not be removed.
     var photoDir = Path.Combine(workspace, "sample_photos");
     Directory.CreateDirectory(photoDir);
     ExtractTemplateMedia(templatePath, photoDir);

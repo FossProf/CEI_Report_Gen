@@ -41,7 +41,7 @@ pwsh ./scripts/build-installer.ps1
 
 Publish output: `artifacts/publish/win-x64/`
 
-Installer output: `artifacts/installer/CEI_Report_Generator_0.1.0-alpha_x64.msi`
+Installer output: `artifacts/installer/SPINgen_0.2.0-alpha_x64.msi`
 
 Deployment guidance: [Deployment](docs/Deployment.md)
 

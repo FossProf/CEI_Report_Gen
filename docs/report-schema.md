@@ -123,7 +123,7 @@ Each photo object contains:
   Report may be edited, saved, and previewed.
 
 - `Final`
-  Report has a final DOCX and is treated as immutable for finalization purposes in `v0.1`.
+  Report has a final DOCX and is treated as immutable for finalization purposes in the `0.2.0-alpha` baseline.
 
 ## Generation Lifecycle
 
@@ -132,5 +132,5 @@ Each photo object contains:
 3. Preview generation writes `working/preview.docx`.
 4. Finalization stages and promotes the final DOCX.
 5. `status` becomes `Final`.
-6. `outputFileName` is set.
+6. `outputFileName` is set to `YYYY-MM-DD {project name} SPIN Report #{report number}.docx`.
 7. Preview artifacts are removed on success.

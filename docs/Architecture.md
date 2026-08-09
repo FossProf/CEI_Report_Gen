@@ -29,6 +29,26 @@
 
 ## Data Flow
 
+Current generation flow:
+
+```text
+ProjectStore
+      ->
+InspectionReport JSON
+      ->
+ReportStore
+      ->
+Validation
+      ->
+ReportGenerator
+      ->
+TemplateFiller / Open XML
+      ->
+Preview
+      ->
+Final Report
+```
+
 `Project`
 
 - Loaded from `project.json`.
@@ -114,6 +134,25 @@ Project-local runtime data:
 - `.github/workflows/build.yml`
   Windows CI build and smoke-test workflow.
 
+## UI Shell
+
+```text
+MainWindow
+      ->
+ProjectWindow
+      |-- Project Dashboard
+      |-- Project Readiness
+      |-- Reports Grid
+      |-- Menus
+      `-- Status Bar
+```
+
+Supporting UI services:
+
+- `ApplicationSettingsStore`
+- `ProjectReadinessEvaluator`
+- `ReportDraftFactory`
+
 ## Report Lifecycle
 
 1. Create or open a project.
@@ -128,14 +167,22 @@ Project-local runtime data:
 
 ## Stable Foundation Components
 
-The following systems are considered protected for `v0.1-foundation` and should only be changed for bug fixes or justified contract updates:
+The following systems are considered protected for the `0.2.0-alpha` SPINgen baseline and should only be changed for bug fixes or justified contract updates:
 
 - `ProjectStore`
 - `ReportStore`
 - `JsonStore`
+- `ProjectLayout`
+- `Validation`
+- `TemplateValidator`
 - `TemplateFiller`
 - `ReportGenerator`
+- `SignatureStore`
 - photo storage behavior
+- photo normalization
 - project numbering behavior
+- preview/final lifecycle
+- `ReportDraftFactory` creation semantics
+- project/report JSON contracts
 - template validation
 - OpenXML generation

@@ -126,3 +126,10 @@ Project fields map directly to the template contract:
 - `owner` -> `{project.owner}`
 - `contractManager` -> `{project.contract}`
 - `generalContractor` -> `{project.general}`
+
+## Final Report Naming
+
+- Finalized reports are saved as `YYYY-MM-DD {project name} SPIN Report #{report number}.docx`.
+- The date comes from the report inspection date.
+- The report number is zero-padded to four digits.
+- The project name portion is sanitized to remain valid on Windows filesystems.

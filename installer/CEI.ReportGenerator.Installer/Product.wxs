@@ -2,19 +2,19 @@
   <Package
     Name="SPINgen"
     Manufacturer="Cornerstone Engineering / CEI"
-    Version="0.1.0"
+    Version="0.2.0"
     UpgradeCode="8B29C486-81BF-49A5-94D0-D58A9D81186C"
     Scope="perMachine"
     InstallerVersion="500"
     Compressed="yes">
 
-    <SummaryInformation Description="SPINgen 0.1.0-alpha installer" Manufacturer="Cornerstone Engineering / CEI" />
+    <SummaryInformation Description="SPINgen 0.2.0-alpha installer" Manufacturer="Cornerstone Engineering / CEI" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of SPINgen is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="AppIcon.ico" SourceFile="$(var.AppIconPath)" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
-    <Property Id="ARPCOMMENTS" Value="Windows desktop application for creating standardized CEI inspection reports." />
+    <Property Id="ARPCOMMENTS" Value="Windows desktop application for creating standardized SPIN reports." />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="SPINgen" />

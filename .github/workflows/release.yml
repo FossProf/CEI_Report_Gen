@@ -36,11 +36,11 @@ jobs:
       - name: Upload Published App
         uses: actions/upload-artifact@v4
         with:
-          name: CEI_Report_Generator_publish_win-x64
+          name: SPINgen_publish_win-x64
           path: artifacts/publish/win-x64
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4
         with:
-          name: CEI_Report_Generator_0.1.0-alpha_x64
-          path: artifacts/installer/CEI_Report_Generator_0.1.0-alpha_x64.msi
+          name: SPINgen_0.2.0-alpha_x64
+          path: artifacts/installer/SPINgen_0.2.0-alpha_x64.msi
