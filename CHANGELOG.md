@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.3.0-alpha - Search & Workspace Baseline
+
+### Report Management
+
+- safe report deletion with confirmation
+- atomic delete staging
+- abandoned-delete cleanup
+- corrected final report naming
+- natural report-number formatting
+- duplicate-SPIN filename prevention
+
+### Search
+
+- project-wide keyword search
+- multi-word AND matching
+- search across report fields
+- status filtering
+- weather filtering
+- inspection-date filtering
+- live search
+- search result counts
+- search result context snippets
+- match-field identification
+
+### Navigation
+
+- Reports workspace
+- Search workspace
+- shared report grid
+- Ctrl+1 / Ctrl+2 workspace switching
+- Enter/Escape search navigation
+- workspace search-state preservation
+
+### UI/UX
+
+- compact project readiness indicator
+- reclaimed report-list space
+- CEI-branded workspace controls
+- more information-dense ProjectWindow
+
+### Stability
+
+- existing report generation preserved
+- schemas unchanged
+- regression suite expanded
+
 ## 0.2.0-alpha - SPINgen UI Baseline
 
 ### Project Management

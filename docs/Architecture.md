@@ -29,23 +29,19 @@
 
 ## Data Flow
 
-Current generation flow:
+Current report lifecycle flow:
 
 ```text
-ProjectStore
-      ->
-InspectionReport JSON
-      ->
-ReportStore
-      ->
+Project
+   ->
+Report
+   ->
 Validation
-      ->
-ReportGenerator
-      ->
-TemplateFiller / Open XML
-      ->
+   ->
+Template
+   ->
 Preview
-      ->
+   ->
 Final Report
 ```
 
@@ -80,6 +76,24 @@ Final Report
 
 - Finalization stages a `.finalizing.docx`, persists `report.json` and `project.json`, then promotes the staged document to `YYYY-MM-DD {project name} SPIN Report #{report number}.docx`.
 - On failure, preview and prior persisted state are preserved or restored.
+
+Current search flow:
+
+```text
+ReportStore.LoadAllReports(project)
+        ->
+InspectionReport objects
+        ->
+ReportSearchService
+        ->
+matching reports
+        ->
+ReportSearchResult / match context
+        ->
+shared ReportsGrid
+```
+
+Search is JSON-backed and in-memory only. It does not read or parse generated DOCX files.
 
 ## Directory Structure
 
@@ -140,9 +154,13 @@ Project-local runtime data:
 MainWindow
       ->
 ProjectWindow
-      |-- Project Dashboard
-      |-- Project Readiness
-      |-- Reports Grid
+      |-- Project Header
+      |    `-- Compact Readiness
+      |-- Workspace Selector
+      |    |-- Reports
+      |    `-- Search
+      |-- Workspace Toolbar
+      |-- Shared ReportsGrid
       |-- Menus
       `-- Status Bar
 ```
@@ -167,7 +185,7 @@ Supporting UI services:
 
 ## Stable Foundation Components
 
-The following systems are considered protected for the `0.2.0-alpha` SPINgen baseline and should only be changed for bug fixes or justified contract updates:
+The following systems are considered protected for the `0.3.0-alpha` SPINgen baseline and should only be changed for bug fixes or justified contract updates:
 
 - `ProjectStore`
 - `ReportStore`
@@ -178,11 +196,13 @@ The following systems are considered protected for the `0.2.0-alpha` SPINgen bas
 - `TemplateFiller`
 - `ReportGenerator`
 - `SignatureStore`
+- `ReportSearchService`
 - photo storage behavior
 - photo normalization
 - project numbering behavior
 - preview/final lifecycle
 - `ReportDraftFactory` creation semantics
+- report deletion semantics
 - project/report JSON contracts
 - template validation
 - OpenXML generation

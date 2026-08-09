@@ -2,13 +2,13 @@
   <Package
     Name="SPINgen"
     Manufacturer="Cornerstone Engineering / CEI"
-    Version="0.2.0"
+    Version="0.3.0"
     UpgradeCode="8B29C486-81BF-49A5-94D0-D58A9D81186C"
     Scope="perMachine"
     InstallerVersion="500"
     Compressed="yes">
 
-    <SummaryInformation Description="SPINgen 0.2.0-alpha installer" Manufacturer="Cornerstone Engineering / CEI" />
+    <SummaryInformation Description="SPINgen 0.3.0-alpha installer" Manufacturer="Cornerstone Engineering / CEI" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of SPINgen is already installed." />
     <MediaTemplate EmbedCab="yes" />
 

@@ -17,7 +17,9 @@ runtime/user data and must not be committed to the repository.
 - [Project Schema](docs/project-schema.md)
 - [Report Schema](docs/report-schema.md)
 - [Template Contract](docs/template-contract.md)
+- [Report Search](docs/report-search.md)
 - [Deployment](docs/Deployment.md)
+- [Release 0.3.0-alpha](docs/releases/0.3.0-alpha.md)
 - [Changelog](CHANGELOG.md)
 
 ## Requirements
@@ -41,7 +43,7 @@ pwsh ./scripts/build-installer.ps1
 
 Publish output: `artifacts/publish/win-x64/`
 
-Installer output: `artifacts/installer/SPINgen_0.2.0-alpha_x64.msi`
+Installer output: `artifacts/installer/SPINgen_0.3.0-alpha_x64.msi`
 
 Deployment guidance: [Deployment](docs/Deployment.md)
 

@@ -8,7 +8,7 @@
 
 ## Installer Procedure
 
-1. Obtain `SPINgen_0.2.0-alpha_x64.msi`.
+1. Obtain `SPINgen_0.3.0-alpha_x64.msi`.
 2. Run the MSI.
 3. Accept the installation prompts.
 4. Launch the application from the Start Menu entry `SPINgen`.
@@ -23,9 +23,8 @@ The deployed bundle includes the packaged template at:
 
 `C:\Program Files\SPINgen\Templates\CEI_Base_Template_Refined.docx`
 
-The current alpha packaging uses a neutral placeholder application icon. Replace
-`src/CEI.ReportGenerator.App\Assets\AppIcon.ico` with an approved CEI asset before
-shipping a branded release.
+The packaged release includes the current SPINgen executable, bundled template,
+branding assets, icon resources, and self-contained .NET runtime dependencies.
 
 ## User and Project Data Location
 
@@ -45,7 +44,7 @@ The application may still let the user choose another writable project folder.
 
 ## SmartScreen Note
 
-This `0.2.0-alpha` build is unsigned.
+This `0.3.0-alpha` build is unsigned.
 
 Windows SmartScreen may warn on first launch or install. Future release engineering can insert code signing at:
 

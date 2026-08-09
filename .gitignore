@@ -12,6 +12,7 @@ Signatures/*
 !Signatures/.gitkeep
 *.tmp.docx
 *.finalizing.docx
+*.deleting.*
 generation-error.log
 artifacts/
 *.msi
