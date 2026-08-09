@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="..\CEI.ReportGenerator.App\CEI.ReportGenerator.App.csproj" />
     <ProjectReference Include="..\CEI.ReportGenerator.Core\CEI.ReportGenerator.Core.csproj" />
+    <ProjectReference Include="..\CEI.ReportImporter.Core\CEI.ReportImporter.Core.csproj" />
   </ItemGroup>
 
 </Project>

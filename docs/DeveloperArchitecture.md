@@ -82,6 +82,14 @@ These components form the current protected baseline and should only change for 
 3. `ReportMatchSnippetBuilder` creates display context.
 4. App binds results to the shared report grid.
 
+### Historical Importer Scan Flow
+
+1. `HistoricalReportScanner` discovers `.docx` files in the selected source folder.
+2. The scanner delegates each file to `IHistoricalReportParser`.
+3. Parser output is wrapped into `HistoricalScanResult` entries.
+4. The full scan is returned as one `HistoricalScanSession`.
+5. Future importer slices will pass that session into review and then commit workflows.
+
 ### Release Flow
 
 1. `scripts\\build-release.ps1` cleans artifacts.
@@ -99,3 +107,19 @@ Keep these boundaries intact:
 - DOCX manipulation in template/generation services
 
 Crossing those boundaries tends to create fragile behavior, especially around report numbering, finalization rollback, and template compatibility.
+
+## Importer Extension Point
+
+The historical importer currently supports one deterministic Open XML parser.
+
+Dependency direction remains:
+
+```text
+HistoricalReportScanner
+  ->
+IHistoricalReportParser
+  ->
+HistoricalDocumentParser
+```
+
+`HistoricalScanSession` is now the canonical unit of work for importer progress between slices. The current WPF scanner window keeps only the current session in memory and does not persist session history yet.

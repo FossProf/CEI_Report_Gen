@@ -20,6 +20,23 @@ Folder scanner and legacy DOCX extraction
 - candidate-file discovery
 - initial legacy Open XML extraction
 - parser diagnostics
+- `HistoricalScanSession` in-memory handoff model
+- `IHistoricalReportParser` as the parser extension seam
+
+## Current 6B Handoff
+
+```text
+HistoricalReportScanner
+  ->
+HistoricalScanSession
+  ->
+HistoricalScanResult[]
+  ->
+Future Review / Correction UI
+```
+
+Current importer sessions are intentionally in-memory only. They are not yet
+persisted to disk and do not commit reports into a SPINgen project.
 
 ## Slice 6C
 

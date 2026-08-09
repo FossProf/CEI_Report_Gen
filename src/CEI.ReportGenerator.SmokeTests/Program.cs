@@ -6,6 +6,8 @@ using CEI.ReportGenerator.App;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
+using CEI.ReportImporter.Core.Models;
+using CEI.ReportImporter.Core.Services;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using A = DocumentFormat.OpenXml.Drawing;
@@ -1562,6 +1564,167 @@ try
     Assert(dedupeReport.Photos[0].StoredFileName == "image1.png", "stored photo keeps original file name");
     Console.WriteLine("    ok: identical content deduped, distinct content preserved with original names");
 
+    Console.WriteLine("\n== Historical scanner and deterministic DOCX parser ==");
+    var importerProject = ProjectStore.Create(
+        Path.Combine(workspace, "historical_scanner_project"), "Scanner Source", "2165", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var importerReport = MakeReport(importerProject, 216, 1, "Overcast", photoFiles);
+    importerReport.Date = new DateTime(2026, 8, 8);
+    importerReport.Locations = "Gridline 2";
+    importerReport.Inspectors = "Anthony Pace";
+    importerReport.PersonnelOnSite = "Badge 50CFAE40 present";
+    importerReport.DescriptionOfWork = "Bond beam reinforcing was inspected";
+    importerReport.DrawingsReviewed = "S-201 lintel detail";
+    importerReport.Observations = "CMU lintel installation reviewed prior to placement.";
+    importerReport.NewDiscrepancies = "Anchor bolts need recheck.";
+    importerReport.PreviousDiscrepancies = "Weldback repair completed.";
+    var finalizedImporterDocx = FinalizeAndGetOutputPath(importerProject, importerReport);
+
+    var filenameParse = HistoricalFilenameParser.Parse("2026-08-08 CMF Structural Repairs SPIN Report #216.docx");
+    Assert(filenameParse.Date == new DateTime(2026, 8, 8), "historical filename parser reads ISO date");
+    Assert(filenameParse.ReportNumber == 216, "historical filename parser reads report number");
+    Assert(filenameParse.ProjectName == "CMF Structural Repairs", "historical filename parser trims duplicate SPIN token from project name");
+    Assert(filenameParse.Warnings.Count == 0, "historical filename parser returns no warnings for canonical file name");
+
+    var filenameMissing = HistoricalFilenameParser.Parse("Legacy report.docx");
+    Assert(filenameMissing.ReportNumber is null && filenameMissing.Date is null, "historical filename parser leaves missing fields empty");
+    Assert(filenameMissing.Warnings.Count == 2, "historical filename parser warns when date and number are missing");
+
+    var parsedImporterDocx = HistoricalDocumentParser.Parse(finalizedImporterDocx);
+    Assert(parsedImporterDocx.Success, "historical parser succeeds on a finalized SPINgen DOCX");
+    Assert(parsedImporterDocx.Status == HistoricalReportParseStatus.Parsed, "historical parser returns Parsed when no warnings are present");
+    Assert(parsedImporterDocx.Request is not null, "historical parser produces an import request");
+    var parsedImporterRequest = parsedImporterDocx.Request ?? throw new InvalidOperationException("Importer parser request should not be null after success.");
+    Assert(parsedImporterDocx.ReportNumber == 216 && parsedImporterRequest.Number == 216, "historical parser reads report number from DOCX");
+    Assert(parsedImporterDocx.Date == new DateTime(2026, 8, 8) && parsedImporterRequest.Date == new DateTime(2026, 8, 8), "historical parser reads inspection date from DOCX");
+    Assert(parsedImporterDocx.ProjectName == "Scanner Source", "historical parser resolves project name");
+    Assert(parsedImporterRequest.Weather == "Overcast", "historical parser reads weather");
+    Assert(parsedImporterRequest.Locations == "Gridline 2", "historical parser reads locations");
+    Assert(parsedImporterRequest.Inspectors == "Anthony Pace", "historical parser reads inspectors");
+    Assert(parsedImporterRequest.PersonnelOnSite == "Badge 50CFAE40 present", "historical parser reads personnel on site");
+    Assert(parsedImporterRequest.DescriptionOfWork == "Bond beam reinforcing was inspected", "historical parser reads description of work");
+    Assert(parsedImporterRequest.DrawingsReviewed == "S-201 lintel detail", "historical parser reads drawings reviewed");
+    Assert(parsedImporterRequest.Observations == "CMU lintel installation reviewed prior to placement.", "historical parser reads observations");
+    Assert(parsedImporterRequest.NewDiscrepancies == "Anchor bolts need recheck.", "historical parser reads new discrepancies");
+    Assert(parsedImporterRequest.PreviousDiscrepancies.Contains("Weldback repair completed.", StringComparison.Ordinal), "historical parser reads previous discrepancies");
+    Assert(parsedImporterDocx.ParserProfile == HistoricalReportImportService.DefaultParserProfile, "historical parser stamps the default parser profile");
+    Assert(parsedImporterDocx.OverallConfidence == HistoricalConfidenceLevel.High, "historical parser returns high confidence for a clean generated report");
+    Assert(parsedImporterDocx.FieldConfidence.ReportNumber == HistoricalConfidenceLevel.High, "historical parser marks report number confidence high when document and filename agree");
+    Assert(parsedImporterDocx.FieldConfidence.Date == HistoricalConfidenceLevel.High, "historical parser marks date confidence high when document and filename agree");
+
+    var longDateDocx = Path.Combine(workspace, "historical_long_date.docx");
+    File.Copy(finalizedImporterDocx, longDateDocx, overwrite: true);
+    ReplaceDocumentText(longDateDocx, "2026-08-08", "August 8, 2026");
+    var longDateParsed = HistoricalDocumentParser.Parse(longDateDocx);
+    Assert(longDateParsed.Success, "historical parser accepts long-form document dates");
+    Assert(longDateParsed.Date == new DateTime(2026, 8, 8), "historical parser reads long-form document dates correctly");
+
+    var mismatchDocx = Path.Combine(workspace, "2026-08-09 Scanner Source SPIN Report #999.docx");
+    File.Copy(finalizedImporterDocx, mismatchDocx, overwrite: true);
+    var mismatchParsed = HistoricalDocumentParser.Parse(mismatchDocx);
+    Assert(mismatchParsed.Success, "historical parser still succeeds when filename and document identity disagree");
+    Assert(mismatchParsed.Status == HistoricalReportParseStatus.ParsedWithWarnings, "historical parser flags mismatched identity as warnings");
+    Assert(mismatchParsed.Warnings.Any(w => w.Contains("report number", StringComparison.OrdinalIgnoreCase)), "historical parser warns on filename/document report number mismatch");
+    Assert(mismatchParsed.Warnings.Any(w => w.Contains("inspection date", StringComparison.OrdinalIgnoreCase)), "historical parser warns on filename/document date mismatch");
+    Assert(mismatchParsed.FieldConfidence.ReportNumber == HistoricalConfidenceLevel.Medium, "historical parser lowers report number confidence on mismatch");
+    Assert(mismatchParsed.FieldConfidence.Date == HistoricalConfidenceLevel.Medium, "historical parser lowers date confidence on mismatch");
+    Assert(mismatchParsed.OverallConfidence == HistoricalConfidenceLevel.Medium, "historical parser lowers overall confidence on filename/document mismatch");
+
+    var missingFieldsReport = MakeReport(importerProject, 217, 1, "Overcast", photoFiles);
+    missingFieldsReport.Date = new DateTime(2026, 8, 7);
+    missingFieldsReport.Observations = "OBS-A-REMOVE-123\r\nOBS-B-REMOVE-456";
+    var missingFieldsDocx = FinalizeAndGetOutputPath(importerProject, missingFieldsReport);
+    ReplaceDocumentText(missingFieldsDocx, "Overcast", string.Empty);
+    ReplaceDocumentText(missingFieldsDocx, "OBS-A-REMOVE-123", string.Empty);
+    ReplaceDocumentText(missingFieldsDocx, "OBS-B-REMOVE-456", string.Empty);
+    var missingFieldsParsed = HistoricalDocumentParser.Parse(missingFieldsDocx);
+    Assert(missingFieldsParsed.Success, "historical parser still succeeds when optional text fields are missing");
+    Assert(missingFieldsParsed.Status == HistoricalReportParseStatus.ParsedWithWarnings, "historical parser reports warnings when fields are missing");
+    Assert(missingFieldsParsed.Warnings.Any(w => w.Contains("Missing weather", StringComparison.OrdinalIgnoreCase)), "historical parser warns when weather is missing");
+    Assert(missingFieldsParsed.Warnings.Any(w => w.Contains("Missing observations", StringComparison.OrdinalIgnoreCase)), "historical parser warns when observations are missing");
+    Assert(missingFieldsParsed.FieldConfidence.Weather == HistoricalConfidenceLevel.Medium, "historical parser assigns medium confidence to missing optional weather");
+    Assert(missingFieldsParsed.FieldConfidence.Observations == HistoricalConfidenceLevel.Low, "historical parser assigns low confidence to missing required observations");
+
+    var invalidDocx = Path.Combine(workspace, "historical_invalid.docx");
+    File.WriteAllText(invalidDocx, "not a real docx");
+    var invalidParsed = HistoricalDocumentParser.Parse(invalidDocx);
+    Assert(!invalidParsed.Success && invalidParsed.Status == HistoricalReportParseStatus.Failed, "historical parser fails cleanly on an invalid DOCX");
+
+    var nonReportDocx = Path.Combine(workspace, "historical_non_report.docx");
+    CreateSimpleDocx(nonReportDocx, "General project notes", "This file is not a CEI report.");
+    var nonReportParsed = HistoricalDocumentParser.Parse(nonReportDocx);
+    Assert(!nonReportParsed.Success && nonReportParsed.Status == HistoricalReportParseStatus.Failed, "historical parser rejects non-report DOCX files");
+
+    var scanRoot = Path.Combine(workspace, "historical_scan_root");
+    Directory.CreateDirectory(scanRoot);
+    File.Copy(finalizedImporterDocx, Path.Combine(scanRoot, Path.GetFileName(finalizedImporterDocx)), overwrite: true);
+    File.Copy(mismatchDocx, Path.Combine(scanRoot, Path.GetFileName(mismatchDocx)), overwrite: true);
+    File.Copy(invalidDocx, Path.Combine(scanRoot, Path.GetFileName(invalidDocx)), overwrite: true);
+    File.Copy(nonReportDocx, Path.Combine(scanRoot, Path.GetFileName(nonReportDocx)), overwrite: true);
+    var nestedScanFolder = Path.Combine(scanRoot, "nested");
+    Directory.CreateDirectory(nestedScanFolder);
+    File.Copy(longDateDocx, Path.Combine(nestedScanFolder, "Historical long date.docx"), overwrite: true);
+
+    var productionScanner = new HistoricalReportScanner(new HistoricalDocumentParser());
+    var flatScan = productionScanner.Scan(new HistoricalReportScanOptions
+    {
+        SourceFolder = scanRoot,
+        IncludeSubfolders = false
+    });
+    Assert(flatScan.SessionId != Guid.Empty, "historical scan session assigns a non-empty session id");
+    Assert(flatScan.SourceFolder == scanRoot, "historical scan session preserves source folder");
+    Assert(!flatScan.IncludeSubfolders, "historical scan session preserves recursive setting");
+    Assert(flatScan.StartedUtc != default, "historical scan session captures start time");
+    Assert(flatScan.CompletedUtc != default, "historical scan session captures completion time");
+    Assert(flatScan.CompletedUtc >= flatScan.StartedUtc, "historical scan session completion time is not earlier than start time");
+    Assert(flatScan.ParserProfile == HistoricalReportImportService.DefaultParserProfile, "historical scan session uses the active parser profile");
+    Assert(flatScan.FilesDiscovered == 4, "historical scanner counts only top-level DOCX files when recursion is disabled");
+    Assert(flatScan.ParsedCount == 2, "historical scanner counts top-level parsed files");
+    Assert(flatScan.FailedCount == 2, "historical scanner counts top-level failed files");
+    Assert(flatScan.Results.Count == 4, "historical scan session contains one result per discovered file");
+    Assert(flatScan.Results.All(r => !string.IsNullOrWhiteSpace(r.SourceFilePath)), "historical scan results retain full source file paths");
+    Assert(flatScan.Results.Any(r => r.SourceFileName == Path.GetFileName(finalizedImporterDocx)), "historical scan session includes expected source files");
+
+    var recursiveScan = productionScanner.Scan(new HistoricalReportScanOptions
+    {
+        SourceFolder = scanRoot,
+        IncludeSubfolders = true
+    });
+    Assert(recursiveScan.SourceFolder == scanRoot, "historical recursive session preserves source folder");
+    Assert(recursiveScan.IncludeSubfolders, "historical recursive session preserves recursive setting");
+    Assert(recursiveScan.SessionId != flatScan.SessionId, "historical rescan creates a new session identity");
+    Assert(recursiveScan.FilesDiscovered == 5, "historical scanner includes nested DOCX files when recursion is enabled");
+    Assert(recursiveScan.ParsedCount == 3, "historical scanner keeps parsing after failures");
+    Assert(recursiveScan.FailedCount == 2, "historical scanner reports failed files without stopping the batch");
+    Assert(recursiveScan.WarningCount >= mismatchParsed.Warnings.Count + missingFieldsParsed.Warnings.Count, "historical scan session aggregates warning counts");
+
+    var emptyScanFolder = Path.Combine(workspace, "historical_empty_scan");
+    Directory.CreateDirectory(emptyScanFolder);
+    var emptyScan = productionScanner.Scan(new HistoricalReportScanOptions
+    {
+        SourceFolder = emptyScanFolder,
+        IncludeSubfolders = true
+    });
+    Assert(emptyScan.SessionId != Guid.Empty, "historical empty-folder scan still creates a session");
+    Assert(emptyScan.FilesDiscovered == 0 && emptyScan.ParsedCount == 0 && emptyScan.FailedCount == 0, "historical scanner handles an empty folder cleanly");
+    Assert(emptyScan.Results.Count == 0, "historical empty-folder session contains zero results");
+
+    var fakeScanFolder = Path.Combine(workspace, "historical_fake_scan");
+    Directory.CreateDirectory(fakeScanFolder);
+    var fakeDocx = Path.Combine(fakeScanFolder, "fake-report.docx");
+    File.WriteAllText(fakeDocx, "fake content");
+    var fakeParser = new TestHistoricalParser();
+    var fakeScanner = new HistoricalReportScanner(fakeParser);
+    var fakeSession = fakeScanner.Scan(new HistoricalReportScanOptions
+    {
+        SourceFolder = fakeScanFolder,
+        IncludeSubfolders = false
+    });
+    Assert(fakeParser.CallCount == 1, "historical scanner uses the injected parser abstraction");
+    Assert(fakeParser.LastParsedPath == fakeDocx, "historical scanner passes the discovered file path into the injected parser");
+    Assert(fakeSession.ParserProfile == fakeParser.ProfileName, "historical scan session parser profile comes from the injected parser");
+    Assert(fakeSession.Results.Count == 1 && fakeSession.Results[0].ParseSucceeded, "historical scanner produces results through the injected parser");
+
     Console.WriteLine("\n== Repository hygiene rules present ==");
     var gitIgnore = File.ReadAllText(Path.Combine(root, ".gitignore"));
     Assert(gitIgnore.Contains("projects/*", StringComparison.Ordinal), "projects runtime data ignored");
@@ -1629,6 +1792,38 @@ static InspectionReport MakeReport(Project project, int number, int photoCount, 
         PreviousDiscrepancies = "N/A",
         Photos = photos
     };
+}
+
+static string FinalizeAndGetOutputPath(Project project, InspectionReport report)
+{
+    var preview = ReportGenerator.GenerateDraft(project, report);
+    ReportGenerator.FinalizeReport(project, report, preview.OutputPath);
+    return ProjectLayout.FinalReportPath(project, report);
+}
+
+static void CreateSimpleDocx(string path, params string[] paragraphs)
+{
+    using var document = WordprocessingDocument.Create(path, DocumentFormat.OpenXml.WordprocessingDocumentType.Document);
+    var mainPart = document.AddMainDocumentPart();
+    mainPart.Document = new Document(
+        new Body(
+            paragraphs.Select(text => new Paragraph(new Run(new Text(text))))));
+    mainPart.Document.Save();
+}
+
+static void ReplaceDocumentText(string docxPath, string oldValue, string newValue)
+{
+    using var document = WordprocessingDocument.Open(docxPath, true);
+    var texts = document.MainDocumentPart?.Document?.Descendants<Text>() ?? Enumerable.Empty<Text>();
+    foreach (var text in texts)
+    {
+        if (!string.IsNullOrEmpty(text.Text) && text.Text.Contains(oldValue, StringComparison.Ordinal))
+        {
+            text.Text = text.Text.Replace(oldValue, newValue, StringComparison.Ordinal);
+        }
+    }
+
+    document.MainDocumentPart?.Document?.Save();
 }
 
 static void AssertFinalFileName(Project project, int reportNumber, string expectedFileName, string[] mediaFiles)
@@ -1929,4 +2124,44 @@ static void Assert(bool condition, string message)
     }
 
     Console.WriteLine($"  ok: {message}");
+}
+
+file sealed class TestHistoricalParser : IHistoricalReportParser
+{
+    public string ProfileName => "Test-Parser-v1";
+
+    public int CallCount { get; private set; }
+
+    public string LastParsedPath { get; private set; } = string.Empty;
+
+    public HistoricalReportParseResult Parse(string documentPath)
+    {
+        CallCount++;
+        LastParsedPath = documentPath;
+
+        return new HistoricalReportParseResult
+        {
+            Status = HistoricalReportParseStatus.Parsed,
+            FilePath = documentPath,
+            FileName = Path.GetFileName(documentPath),
+            ParserProfile = ProfileName,
+            OverallConfidence = HistoricalConfidenceLevel.High,
+            FieldConfidence = new HistoricalFieldConfidence
+            {
+                ReportNumber = HistoricalConfidenceLevel.High,
+                Date = HistoricalConfidenceLevel.High
+            },
+            Request = new HistoricalReportImportRequest
+            {
+                Number = 1,
+                Date = new DateTime(2026, 8, 8),
+                SourceDocumentPath = documentPath,
+                ParserProfile = ProfileName
+            },
+            ProjectName = "Injected Parser Test",
+            ReportNumber = 1,
+            Date = new DateTime(2026, 8, 8),
+            Warnings = Array.Empty<string>()
+        };
+    }
 }

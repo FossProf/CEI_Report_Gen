@@ -1,0 +1,76 @@
+<Window x:Class="CEI.ReportImporter.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SPINgen Historical Report Importer"
+        Height="640"
+        Width="1080"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Historical Report Scanner"
+                   FontSize="24"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,14"/>
+
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Source Folder:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox x:Name="SourceFolderTextBox" Grid.Row="0" Grid.Column="1" Margin="0,0,10,0" MinWidth="420"/>
+            <Button Grid.Row="0" Grid.Column="2" Content="Browse..." Padding="12,6" Margin="0,0,10,0" Click="BrowseButton_Click"/>
+            <Button x:Name="ScanButton" Grid.Row="0" Grid.Column="3" Content="Scan" Padding="18,6" Click="ScanButton_Click"/>
+
+            <CheckBox x:Name="IncludeSubfoldersCheckBox"
+                      Grid.Row="1"
+                      Grid.Column="1"
+                      Margin="0,10,0,0"
+                      Content="Include subfolders"/>
+
+            <TextBlock x:Name="SummaryTextBlock"
+                       Grid.Row="2"
+                       Grid.Column="1"
+                       Margin="0,10,0,0"
+                       Foreground="DimGray"
+                       Text="No scan has been run yet."/>
+        </Grid>
+
+        <DataGrid x:Name="ResultsGrid"
+                  Grid.Row="2"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  CanUserAddRows="False"
+                  MouseDoubleClick="ResultsGrid_MouseDoubleClick">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Status" Binding="{Binding ParseResult.StatusText}" Width="150"/>
+                <DataGridTextColumn Header="Filename" Binding="{Binding SourceFileName}" Width="280"/>
+                <DataGridTextColumn Header="Report #" Binding="{Binding ParseResult.ReportNumberText}" Width="90"/>
+                <DataGridTextColumn Header="Date" Binding="{Binding ParseResult.DateText}" Width="120"/>
+                <DataGridTextColumn Header="Project Name" Binding="{Binding ParseResult.ProjectName}" Width="240"/>
+                <DataGridTextColumn Header="Confidence" Binding="{Binding ParseResult.ConfidenceText}" Width="110"/>
+                <DataGridTextColumn Header="Warnings" Binding="{Binding ParseResult.WarningsText}" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <TextBlock Grid.Row="3"
+                   Margin="0,12,0,0"
+                   Foreground="DimGray"
+                   Text="This slice scans and parses historical reports only. It does not commit anything into a SPINgen project."/>
+    </Grid>
+</Window>
