@@ -132,5 +132,5 @@ Each photo object contains:
 3. Preview generation writes `working/preview.docx`.
 4. Finalization stages and promotes the final DOCX.
 5. `status` becomes `Final`.
-6. `outputFileName` is set to `YYYY-MM-DD {project name} SPIN Report #{report number}.docx`.
+6. `outputFileName` is set to `YYYY-MM-DD {project name} SPIN Report #{report number}.docx`, without leading zeros in the report number and without duplicating `SPIN` when the project name already ends with it.
 7. Preview artifacts are removed on success.

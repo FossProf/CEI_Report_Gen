@@ -58,7 +58,7 @@ Deployment guidance: [Deployment](docs/Deployment.md)
    fills the approved Word template using Open XML, and writes a preview to
    `Reports\0001\working\preview.docx`.
 5. Accept as Final: after review, the preview is promoted to
-   `Reports\0001\2026-08-05 Demo Project SPIN Report #0001.docx`, the report is marked Final, and the
+   `Reports\0001\2026-08-05 Demo Project SPIN Report #1.docx`, the report is marked Final, and the
    project's next report number advances to at least the finalized report number plus one.
 
 Projects can be closed and reopened from the main window; all state is reloaded from disk.
@@ -97,7 +97,7 @@ A project folder created by the app looks like:
         |-- working/
         |   `-- preview.docx
         |-- report.json
-        |-- 2026-08-05 Demo Project SPIN Report #0001.docx
+        |-- 2026-08-05 Demo Project SPIN Report #1.docx
         `-- photos/
 ```
 

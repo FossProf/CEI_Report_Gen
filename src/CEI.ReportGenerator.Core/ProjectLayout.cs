@@ -54,8 +54,11 @@ public static class ProjectLayout
     {
         var datePart = report.Date == default ? DateTime.Today.ToString("yyyy-MM-dd") : report.Date.ToString("yyyy-MM-dd");
         var projectNamePart = SanitizeFileNameSegment(project.Name, "Project");
-        var reportNumberPart = FormatReportNumber(report.Number);
-        var fileName = $"{datePart} {projectNamePart} SPIN Report #{reportNumberPart}.docx";
+        var reportNumberPart = report.Number.ToString();
+        var reportLabel = projectNamePart.EndsWith("SPIN", StringComparison.OrdinalIgnoreCase)
+            ? "Report"
+            : "SPIN Report";
+        var fileName = $"{datePart} {projectNamePart} {reportLabel} #{reportNumberPart}.docx";
         return new FinalReportFileNameInfo(datePart, projectNamePart, reportNumberPart, fileName);
     }
 

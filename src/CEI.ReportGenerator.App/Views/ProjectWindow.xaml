@@ -59,6 +59,11 @@
                         <Path Data="{StaticResource IconCopyGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
                     </MenuItem.Icon>
                 </MenuItem>
+                <MenuItem x:Name="DeleteSelectedReportMenuItem" Header="_Delete Selected Report..." Click="DeleteSelectedReportMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconTrashGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource DangerBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="_Tools">
                 <MenuItem Header="_Application Settings..." InputGestureText="Ctrl+," Click="ApplicationSettingsMenuItem_Click">
@@ -235,11 +240,33 @@
                               SelectionChanged="ReportsGrid_SelectionChanged">
                         <DataGrid.ContextMenu>
                             <ContextMenu>
+                                <MenuItem x:Name="OpenThisReportContextMenuItem"
+                                          Header="Open This Report"
+                                          Click="OpenThisReportContextMenuItem_Click">
+                                    <MenuItem.Icon>
+                                        <Path Data="{StaticResource IconFileEarmarkTextGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem x:Name="OpenThisReportFolderContextMenuItem"
+                                          Header="Open This Report Folder"
+                                          Click="OpenThisReportFolderContextMenuItem_Click">
+                                    <MenuItem.Icon>
+                                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
                                 <MenuItem x:Name="NewReportFromThisReportContextMenuItem"
                                           Header="New Report from This Report..."
                                           Click="NewReportFromThisReportContextMenuItem_Click">
                                     <MenuItem.Icon>
                                         <Path Data="{StaticResource IconCopyGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <Separator/>
+                                <MenuItem x:Name="DeleteThisReportContextMenuItem"
+                                          Header="Delete This Report..."
+                                          Click="DeleteThisReportContextMenuItem_Click">
+                                    <MenuItem.Icon>
+                                        <Path Data="{StaticResource IconTrashGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource DangerBrush}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                             </ContextMenu>

@@ -252,7 +252,7 @@ try
 
     var finalSource = MakeReport(draftFactoryProject, 4, 2, "Cloudy", readinessPhotos);
     finalSource.Status = ReportStatus.Final;
-    finalSource.OutputFileName = "2026-08-01 Draft Factory SPIN Report #0004.docx";
+    finalSource.OutputFileName = "2026-08-01 Draft Factory SPIN Report #4.docx";
     finalSource.CreatedUtc = new DateTime(2026, 8, 1, 12, 30, 0, DateTimeKind.Utc);
 
     var duplicatedFromFinal = ReportDraftFactory.CreateFromExisting(draftFactoryProject, finalSource);
@@ -279,7 +279,7 @@ try
     Assert(finalSource.Locations != duplicatedFromFinal.Locations, "editing duplicated report does not change source location");
     Assert(finalSource.Inspectors != duplicatedFromFinal.Inspectors, "editing duplicated report does not change source inspectors");
     Assert(finalSource.Photos.Count == 2, "editing duplicated report does not change source photos");
-    Assert(finalSource.OutputFileName == "2026-08-01 Draft Factory SPIN Report #0004.docx", "editing duplicated report does not change source output file");
+    Assert(finalSource.OutputFileName == "2026-08-01 Draft Factory SPIN Report #4.docx", "editing duplicated report does not change source output file");
     Assert(finalSource.Status == ReportStatus.Final, "editing duplicated report does not change final source status");
 
     var draftSource = MakeReport(draftFactoryProject, 7, 1, "Rain", readinessPhotos);
@@ -569,8 +569,8 @@ try
     ReportGenerator.FinalizeReport(project, finalizeReport, finalizeResult!.OutputPath);
     Assert(finalizeReport.Status == ReportStatus.Final, "report status is Final");
     Assert(File.Exists(finalReportPath), "final report file exists after accept");
-    Assert(Path.GetFileName(finalReportPath) == "2026-08-05 Demo Project SPIN Report #0004.docx", "final report file uses the SPIN naming pattern");
-    Assert(finalizeReport.OutputFileName == "2026-08-05 Demo Project SPIN Report #0004.docx", "finalized report stores the SPIN output file name");
+    Assert(Path.GetFileName(finalReportPath) == "2026-08-05 Demo Project SPIN Report #4.docx", "final report file uses the SPIN naming pattern");
+    Assert(finalizeReport.OutputFileName == "2026-08-05 Demo Project SPIN Report #4.docx", "finalized report stores the SPIN output file name");
     Assert(!File.Exists(ProjectLayout.ReportPreviewPath(project, finalizeReport.Number)), "preview cleaned up after finalization");
 
     var finalProject = ProjectStore.Load(projectFolder);
@@ -635,6 +635,92 @@ try
     ReportGenerator.FinalizeReport(manualReloaded, manualReport3, manualPreview3.OutputPath);
     var manualReloadedAgain = ProjectStore.Load(manualProject.FolderPath)!;
     Assert(manualReloadedAgain.NextReportNumber == 6, "Next = 6, finalize 3 -> Next remains 6");
+
+    Console.WriteLine("\n== Final report naming avoids duplicate SPIN and trims leading zeros ==");
+    var namingProject = ProjectStore.Create(
+        Path.Combine(workspace, "naming_project"), "CMF Structural Repairs", "88", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    AssertFinalFileName(namingProject, 1, "2026-08-05 CMF Structural Repairs SPIN Report #1.docx", photoFiles);
+    AssertFinalFileName(namingProject, 9, "2026-08-05 CMF Structural Repairs SPIN Report #9.docx", photoFiles);
+    AssertFinalFileName(namingProject, 21, "2026-08-05 CMF Structural Repairs SPIN Report #21.docx", photoFiles);
+    AssertFinalFileName(namingProject, 216, "2026-08-05 CMF Structural Repairs SPIN Report #216.docx", photoFiles);
+
+    var spinNamedProject = ProjectStore.Create(
+        Path.Combine(workspace, "spin_named_project"), "CMF Structural Repairs SPIN", "90", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var spinFileNameInfo = ProjectLayout.BuildFinalReportFileNameInfo(spinNamedProject, MakeReport(spinNamedProject, 216, 1, "Sunny", photoFiles));
+    Assert(spinFileNameInfo.FileName == "2026-08-05 CMF Structural Repairs SPIN Report #216.docx", "final file name avoids duplicate SPIN when the project name already ends with SPIN");
+    Assert(!spinFileNameInfo.FileName.Contains("SPIN SPIN", StringComparison.OrdinalIgnoreCase), "final file name never duplicates SPIN");
+    Assert(!spinFileNameInfo.FileName.Contains("#0216", StringComparison.Ordinal), "final file name never pads the visible report number");
+
+    var sanitizedNamingProject = ProjectStore.Create(
+        Path.Combine(workspace, "sanitized_naming_project"), "CMF: Structural/Repairs?", "91", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var sanitizedFileNameInfo = ProjectLayout.BuildFinalReportFileNameInfo(sanitizedNamingProject, MakeReport(sanitizedNamingProject, 12, 1, "Sunny", photoFiles));
+    Assert(sanitizedFileNameInfo.FileName == "2026-08-05 CMF_ Structural_Repairs_ SPIN Report #12.docx", "final file name still sanitizes invalid file-name characters");
+
+    Console.WriteLine("\n== Report deletion removes only the selected report data ==");
+    var deleteProject = ProjectStore.Create(
+        Path.Combine(workspace, "delete_project"), "Delete Project", "89", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    deleteProject.NextReportNumber = 217;
+    ProjectStore.Save(deleteProject);
+
+    var draftReport214 = MakeReport(deleteProject, 214, 2, "Sunny", photoFiles);
+    ReportGenerator.SaveDraft(deleteProject, draftReport214);
+
+    var finalReport215 = MakeReport(deleteProject, 215, 1, "Sunny", photoFiles);
+    var finalPreview215 = ReportGenerator.GenerateDraft(deleteProject, finalReport215);
+    ReportGenerator.FinalizeReport(deleteProject, finalReport215, finalPreview215.OutputPath);
+
+    var finalReport216 = MakeReport(deleteProject, 216, 2, "Sunny", photoFiles);
+    var finalPreview216 = ReportGenerator.GenerateDraft(deleteProject, finalReport216);
+    ReportGenerator.FinalizeReport(deleteProject, finalReport216, finalPreview216.OutputPath);
+
+    var report216Folder = ProjectLayout.ReportFolder(deleteProject, 216);
+    var report216Json = ProjectLayout.ReportFilePath(deleteProject, 216);
+    var report216Photos = ProjectLayout.ReportPhotosFolder(deleteProject, 216);
+    var report216Working = ProjectLayout.ReportWorkingFolder(deleteProject, 216);
+    var report216Final = ProjectLayout.FinalReportPath(deleteProject, finalReport216);
+    var projectJsonBeforeDelete = File.ReadAllBytes(deleteProject.FilePath);
+    var signaturesBeforeDelete = Directory.GetFiles(ProjectLayout.SignaturesFolder(deleteProject), "*", SearchOption.TopDirectoryOnly)
+        .Select(path => Path.GetFileName(path))
+        .OrderBy(name => name)
+        .ToArray();
+
+    Assert(Directory.Exists(report216Folder), "selected report folder exists before deletion");
+    Assert(File.Exists(report216Json), "selected report.json exists before deletion");
+    Assert(Directory.Exists(report216Photos), "selected report photos folder exists before deletion");
+    Assert(File.Exists(report216Final), "selected finalized report file exists before deletion");
+    Assert(!Directory.Exists(report216Working), "selected working folder is already cleaned after finalization");
+    Assert(Directory.Exists(ProjectLayout.ReportFolder(deleteProject, 214)), "other draft report folder exists before deletion");
+    Assert(Directory.Exists(ProjectLayout.ReportFolder(deleteProject, 215)), "other final report folder exists before deletion");
+
+    Assert(ReportStore.DeleteReport(deleteProject, 216), "delete report returns true when the report folder exists");
+    Assert(!Directory.Exists(report216Folder), "delete report removes the selected report folder");
+    Assert(!File.Exists(report216Json), "delete report removes the selected report.json");
+    Assert(!Directory.Exists(report216Photos), "delete report removes the selected report photos folder");
+    Assert(!File.Exists(report216Final), "delete report removes the selected finalized report file");
+    Assert(!Directory.Exists(report216Working), "delete report leaves no working folder behind");
+    Assert(Directory.Exists(ProjectLayout.ReportFolder(deleteProject, 214)), "delete report does not remove other draft report folders");
+    Assert(Directory.Exists(ProjectLayout.ReportFolder(deleteProject, 215)), "delete report does not remove other final report folders");
+    Assert(File.ReadAllBytes(deleteProject.FilePath).SequenceEqual(projectJsonBeforeDelete), "delete report does not modify project.json");
+    Assert(
+        Directory.GetFiles(ProjectLayout.SignaturesFolder(deleteProject), "*", SearchOption.TopDirectoryOnly)
+            .Select(path => Path.GetFileName(path))
+            .OrderBy(name => name)
+            .SequenceEqual(signaturesBeforeDelete),
+        "delete report does not modify stored signatures");
+
+    var deleteReloadedProject = ProjectStore.Load(deleteProject.FolderPath)!;
+    Assert(deleteReloadedProject.NextReportNumber == 217, "delete report does not rewind the next report number");
+    var deleteLoadResult = ReportStore.LoadAllReports(deleteReloadedProject);
+    Assert(deleteLoadResult.Reports.Count == 2, "deleted report is no longer returned from report loading");
+    Assert(deleteLoadResult.Reports.All(report => report.Number != 216), "deleted report number is absent after reload");
+    Assert(deleteLoadResult.Reports.Any(report => report.Number == 214), "remaining draft report still loads after deletion");
+    Assert(deleteLoadResult.Reports.Any(report => report.Number == 215), "remaining final report still loads after deletion");
+    Assert(ReportStore.GetNextReportNumber(deleteReloadedProject) == 217, "authoritative next report number remains 217 after deleting report 216");
+    Assert(!ReportStore.DeleteReport(deleteReloadedProject, 216), "delete report returns false when the report folder is already gone");
 
     Console.WriteLine("\n== Finalization rollback preserves preview and state ==");
     var rollbackProject = ProjectStore.Create(
@@ -819,6 +905,13 @@ static InspectionReport MakeReport(Project project, int number, int photoCount, 
         PreviousDiscrepancies = "N/A",
         Photos = photos
     };
+}
+
+static void AssertFinalFileName(Project project, int reportNumber, string expectedFileName, string[] mediaFiles)
+{
+    var report = MakeReport(project, reportNumber, 1, "Sunny", mediaFiles);
+    var fileNameInfo = ProjectLayout.BuildFinalReportFileNameInfo(project, report);
+    Assert(fileNameInfo.FileName == expectedFileName, $"final file name matches expected naming contract for report #{reportNumber}");
 }
 
 static void ExpectGenerationFailure(Project project, InspectionReport report, GenerationStage expectedStage, Func<string, bool> messageCheck)

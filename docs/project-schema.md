@@ -131,5 +131,6 @@ Project fields map directly to the template contract:
 
 - Finalized reports are saved as `YYYY-MM-DD {project name} SPIN Report #{report number}.docx`.
 - The date comes from the report inspection date.
-- The report number is zero-padded to four digits.
+- The report number uses its natural whole-number form with no leading zeros.
 - The project name portion is sanitized to remain valid on Windows filesystems.
+- If the project name already ends with `SPIN`, the file name does not add a second `SPIN` before `Report`.

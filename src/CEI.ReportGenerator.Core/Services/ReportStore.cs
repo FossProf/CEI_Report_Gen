@@ -229,6 +229,25 @@ public static class ReportStore
         return new ReportLoadResult(reports, issues);
     }
 
+    public static bool DeleteReport(Project project, int reportNumber)
+    {
+        var reportFolder = ProjectLayout.ReportFolder(project, reportNumber);
+        if (!Directory.Exists(reportFolder))
+        {
+            return false;
+        }
+
+        var reportsRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(ProjectLayout.ReportsFolder(project)));
+        var fullReportFolder = Path.GetFullPath(reportFolder);
+        if (!fullReportFolder.StartsWith(reportsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Report folder resolves outside the project reports folder.");
+        }
+
+        Directory.Delete(fullReportFolder, recursive: true);
+        return true;
+    }
+
     public static string StoredPhotoPath(Project project, InspectionReport report, Photo photo)
     {
         var photosFolder = ProjectLayout.ReportPhotosFolder(project, report.Number);

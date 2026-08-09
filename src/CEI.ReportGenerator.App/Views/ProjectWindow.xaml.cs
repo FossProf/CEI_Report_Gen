@@ -164,6 +164,26 @@ public partial class ProjectWindow : Window
         CreateNewReportFromSelected();
     }
 
+    private void OpenThisReportContextMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSelectedReport();
+    }
+
+    private void OpenThisReportFolderContextMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSelectedReportFolder();
+    }
+
+    private void DeleteThisReportContextMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        DeleteSelectedReport();
+    }
+
+    private void DeleteSelectedReportMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        DeleteSelectedReport();
+    }
+
     private void ApplicationSettingsMenuItem_Click(object sender, RoutedEventArgs e)
     {
         OpenApplicationSettings();
@@ -361,6 +381,79 @@ public partial class ProjectWindow : Window
         OpenInExplorer(folder);
     }
 
+    private void DeleteSelectedReport()
+    {
+        if (GetSelectedReportItem() is not { } item)
+        {
+            MessageBox.Show(
+                this,
+                "Select a report first.",
+                "Delete Report",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var reportNumber = item.Report.Number.ToString();
+        var message = item.Report.Status == ReportStatus.Final
+            ? $"Delete FINAL Report #{reportNumber}?{Environment.NewLine}{Environment.NewLine}This report has been finalized.{Environment.NewLine}{Environment.NewLine}Deleting it will permanently remove the finalized Word document and its saved report data.{Environment.NewLine}{Environment.NewLine}This action cannot be undone."
+            : $"Delete Report #{reportNumber}?{Environment.NewLine}{Environment.NewLine}This will permanently delete:{Environment.NewLine}- report data{Environment.NewLine}- generated Word report{Environment.NewLine}- saved photos for this report{Environment.NewLine}- temporary and preview files{Environment.NewLine}{Environment.NewLine}This action cannot be undone.";
+        var result = MessageBox.Show(
+            this,
+            message,
+            "Delete Report",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!ReportStore.DeleteReport(_project, item.Report.Number))
+            {
+                MessageBox.Show(
+                    this,
+                    "The selected report folder no longer exists.",
+                    "Delete Report",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+
+            RefreshDashboard();
+        }
+        catch (IOException)
+        {
+            MessageBox.Show(
+                this,
+                "Report could not be deleted because one or more files are currently in use. Close the report in Word and try again.",
+                "Delete Report",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            MessageBox.Show(
+                this,
+                "Report could not be deleted because one or more files are currently in use. Close the report in Word and try again.",
+                "Delete Report",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "Delete Report",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
     private void OpenProjectFolder()
     {
         Directory.CreateDirectory(_project.FolderPath);
@@ -442,7 +535,11 @@ public partial class ProjectWindow : Window
         OpenSelectedReportMenuItem.IsEnabled = hasSelection;
         OpenSelectedReportFolderMenuItem.IsEnabled = hasSelection;
         NewReportFromSelectedMenuItem.IsEnabled = hasSelection;
+        OpenThisReportContextMenuItem.IsEnabled = hasSelection;
+        OpenThisReportFolderContextMenuItem.IsEnabled = hasSelection;
         NewReportFromThisReportContextMenuItem.IsEnabled = hasSelection;
+        DeleteSelectedReportMenuItem.IsEnabled = hasSelection;
+        DeleteThisReportContextMenuItem.IsEnabled = hasSelection;
     }
 
     private void CloseProject()
