@@ -181,7 +181,7 @@ public partial class ProjectWindow : Window
 
     private void ValidateProjectMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        ValidateProjectConfiguration();
+        OpenProjectReadinessDetails();
     }
 
     private void OpenReportsFolderMenuItem_Click(object sender, RoutedEventArgs e)
@@ -237,6 +237,11 @@ public partial class ProjectWindow : Window
     private void ApplicationSettingsMenuItem_Click(object sender, RoutedEventArgs e)
     {
         OpenApplicationSettings();
+    }
+
+    private void ReadinessIndicatorButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenProjectReadinessDetails();
     }
 
     private void AboutMenuItem_Click(object sender, RoutedEventArgs e)
@@ -421,10 +426,14 @@ public partial class ProjectWindow : Window
     private void RefreshReadinessPanel()
     {
         var readiness = _dashboardSummary.Readiness;
-        ApplyReadinessText(TemplateReadinessIcon, TemplateReadinessText, "Template", readiness.TemplateReady, readiness.TemplateIssues, "Attention");
-        ApplyReadinessText(InspectorReadinessIcon, InspectorReadinessText, "Inspector Signature", readiness.InspectorSignatureReady, readiness.InspectorSignatureIssues, "Missing/Invalid");
-        ApplyReadinessText(ProjectManagerReadinessIcon, ProjectManagerReadinessText, "Project Manager Signature", readiness.ProjectManagerSignatureReady, readiness.ProjectManagerSignatureIssues, "Missing/Invalid");
-        ApplyReadinessText(ConfigurationReadinessIcon, ConfigurationReadinessText, "Project Configuration", readiness.ProjectConfigurationReady, readiness.ProjectConfigurationIssues, "Attention");
+        var presentation = BuildReadinessPresentation(readiness);
+        ReadinessIndicatorIcon.Data = (Geometry)FindResource(presentation.IconResourceKey);
+        ReadinessIndicatorIcon.Fill = (Brush)FindResource(presentation.IconBrushResourceKey);
+        ReadinessIndicatorText.Text = presentation.StatusText;
+        ReadinessIndicatorButton.ToolTip = presentation.TooltipText;
+        ReadinessIndicatorButton.Background = (Brush)FindResource(presentation.BackgroundBrushResourceKey);
+        ReadinessIndicatorButton.BorderBrush = (Brush)FindResource(presentation.BorderBrushResourceKey);
+        ReadinessIndicatorButton.Foreground = (Brush)FindResource(presentation.ForegroundBrushResourceKey);
     }
 
     private void RefreshStatusBar()
@@ -453,15 +462,6 @@ public partial class ProjectWindow : Window
             "Report Load Warning",
             MessageBoxButton.OK,
             MessageBoxImage.Warning);
-    }
-
-    private void ApplyReadinessText(System.Windows.Shapes.Path iconTarget, TextBlock target, string label, bool isReady, IReadOnlyList<string> issues, string notReadyText)
-    {
-        target.Text = isReady ? $"{label}: Ready" : $"{label}: {notReadyText}";
-        iconTarget.Data = (Geometry)FindResource(isReady ? "IconCheckCircleGeometry" : "IconExclamationTriangleGeometry");
-        iconTarget.Fill = (Brush)FindResource(isReady ? "StatusReadyBrush" : "StatusWarningBrush");
-        ToolTipService.SetToolTip(target, issues.Count == 0 ? null : string.Join(Environment.NewLine, issues));
-        ToolTipService.SetToolTip(iconTarget, issues.Count == 0 ? null : string.Join(Environment.NewLine, issues));
     }
 
     private void CreateNewReport()
@@ -655,45 +655,17 @@ public partial class ProjectWindow : Window
         }
     }
 
-    private void ValidateProjectConfiguration()
+    private void OpenProjectReadinessDetails()
     {
         var readiness = _dashboardSummary.Readiness;
-        if (readiness.IsReady)
-        {
-            var message = "Project configuration is valid." + Environment.NewLine + Environment.NewLine +
-                          "Template: Ready" + Environment.NewLine +
-                          "Inspector Signature: Ready" + Environment.NewLine +
-                          "Project Manager Signature: Ready";
-
-            MessageBox.Show(
-                this,
-                message,
-                "Project Validation",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            return;
-        }
-
-        var lines = new List<string>
-        {
-            readiness.TemplateReady ? "Template: Ready" : "Template: Attention",
-            readiness.InspectorSignatureReady ? "Inspector Signature: Ready" : "Inspector Signature: Missing/Invalid",
-            readiness.ProjectManagerSignatureReady ? "Project Manager Signature: Ready" : "Project Manager Signature: Missing/Invalid",
-            readiness.ProjectConfigurationReady ? "Project Configuration: Ready" : "Project Configuration: Attention"
-        };
-
-        if (readiness.Issues.Count > 0)
-        {
-            lines.Add(string.Empty);
-            lines.AddRange(readiness.Issues);
-        }
+        var details = BuildReadinessDetailsText(readiness, includeTitle: false);
 
         MessageBox.Show(
             this,
-            string.Join(Environment.NewLine, lines),
+            details,
             "Project Validation",
             MessageBoxButton.OK,
-            MessageBoxImage.Warning);
+            readiness.IsReady ? MessageBoxImage.Information : MessageBoxImage.Warning);
     }
 
     private void OpenReportsFolder()
@@ -779,6 +751,78 @@ public partial class ProjectWindow : Window
         return null;
     }
 
+    private static ReadinessPresentation BuildReadinessPresentation(ProjectReadiness readiness)
+    {
+        var issueCategoryCount = CountFailedReadinessCategories(readiness);
+        var isReady = readiness.IsReady;
+        var statusText = isReady
+            ? "Project Ready"
+            : issueCategoryCount == 1
+                ? "1 Setup Issue"
+                : $"{issueCategoryCount} Setup Issues";
+
+        return new ReadinessPresentation(
+            statusText,
+            BuildReadinessDetailsText(readiness, includeTitle: true),
+            isReady ? "IconCheckCircleGeometry" : "IconExclamationTriangleGeometry",
+            isReady ? "StatusReadyBrush" : "StatusWarningBrush",
+            isReady ? "HoverBrush" : "DangerTintBrush",
+            isReady ? "StatusReadyBrush" : "StatusWarningBrush",
+            isReady ? "PrimaryTextBrush" : "PrimaryTextBrush");
+    }
+
+    private static string BuildReadinessDetailsText(ProjectReadiness readiness, bool includeTitle)
+    {
+        var lines = new List<string>();
+        if (includeTitle)
+        {
+            lines.Add("Project Readiness");
+            lines.Add(string.Empty);
+        }
+
+        lines.Add(ReadinessLine(readiness.TemplateReady, "Template", "Attention"));
+        lines.Add(ReadinessLine(readiness.InspectorSignatureReady, "Inspector Signature", "Missing/Invalid"));
+        lines.Add(ReadinessLine(readiness.ProjectManagerSignatureReady, "Project Manager Signature", "Missing/Invalid"));
+        lines.Add(ReadinessLine(readiness.ProjectConfigurationReady, "Project Configuration", "Attention"));
+
+        if (readiness.Issues.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.AddRange(readiness.Issues);
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string ReadinessLine(bool isReady, string label, string notReadyText)
+        => isReady ? $"✓ {label}: Ready" : $"⚠ {label}: {notReadyText}";
+
+    private static int CountFailedReadinessCategories(ProjectReadiness readiness)
+    {
+        var count = 0;
+        if (!readiness.TemplateReady)
+        {
+            count++;
+        }
+
+        if (!readiness.InspectorSignatureReady)
+        {
+            count++;
+        }
+
+        if (!readiness.ProjectManagerSignatureReady)
+        {
+            count++;
+        }
+
+        if (!readiness.ProjectConfigurationReady)
+        {
+            count++;
+        }
+
+        return count;
+    }
+
     public sealed record ReportListItem(Project Project, InspectionReport Report)
     {
         public string Number => ProjectLayout.FormatReportNumber(Report.Number);
@@ -798,4 +842,13 @@ public partial class ProjectWindow : Window
         public static FilterOption ForWeather(string label, string? weather)
             => new(label, null, weather);
     }
+
+    private sealed record ReadinessPresentation(
+        string StatusText,
+        string TooltipText,
+        string IconResourceKey,
+        string IconBrushResourceKey,
+        string BackgroundBrushResourceKey,
+        string BorderBrushResourceKey,
+        string ForegroundBrushResourceKey);
 }
