@@ -1,15 +1,18 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
-    Name="SPINgen"
+    Name="$(var.ReleaseProductName)"
     Manufacturer="Cornerstone Engineering / CEI"
-    Version="0.3.0"
+    Version="$(var.ReleaseProductVersion)"
     UpgradeCode="8B29C486-81BF-49A5-94D0-D58A9D81186C"
     Scope="perMachine"
     InstallerVersion="500"
     Compressed="yes">
 
-    <SummaryInformation Description="SPINgen 0.3.0-alpha installer" Manufacturer="Cornerstone Engineering / CEI" />
-    <MajorUpgrade DowngradeErrorMessage="A newer version of SPINgen is already installed." />
+    <SummaryInformation Description="$(var.ReleaseProductName) $(var.ReleaseInformationalVersion) installer" Manufacturer="Cornerstone Engineering / CEI" />
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      Schedule="afterInstallInitialize"
+      DowngradeErrorMessage="A newer version of SPINgen is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="AppIcon.ico" SourceFile="$(var.AppIconPath)" />
@@ -21,10 +24,10 @@
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="ApplicationProgramsFolder" Name="SPINgen" />
+      <Directory Id="ApplicationProgramsFolder" Name="$(var.ReleaseProductName)" />
     </StandardDirectory>
 
-    <Feature Id="MainFeature" Title="SPINgen" Level="1">
+    <Feature Id="MainFeature" Title="$(var.ReleaseProductName)" Level="1">
       <ComponentGroupRef Id="PublishedApplicationFiles" />
       <ComponentRef Id="ApplicationShortcutComponent" />
     </Feature>
@@ -35,14 +38,14 @@
       <Component Id="ApplicationShortcutComponent" Guid="5AB7A9D2-292B-44C7-8B74-697517A4C6AA">
         <Shortcut
           Id="ApplicationStartMenuShortcut"
-          Name="SPINgen"
-          Description="Launch SPINgen"
+          Name="$(var.ReleaseProductName)"
+          Description="Launch $(var.ReleaseProductName)"
           Target="[INSTALLFOLDER]CEI.ReportGenerator.App.exe"
           WorkingDirectory="INSTALLFOLDER"
           Icon="AppIcon.ico" />
         <RemoveFile Id="ApplicationProgramsFolderFilesRemove" Name="*" On="uninstall" />
         <RemoveFolder Id="ApplicationProgramsFolderRemove" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\SPINgen" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\$(var.ReleaseProductName)" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </DirectoryRef>
   </Fragment>

@@ -4,7 +4,8 @@
     <Platform>x64</Platform>
     <InstallerPlatform>x64</InstallerPlatform>
     <Cultures>en-US</Cultures>
-    <OutputName>SPINgen_0.3.0-alpha_x64</OutputName>
-    <DefineConstants>PublishDir=$(PublishDir);AppIconPath=$(AppIconPath)</DefineConstants>
+    <OutputName>$(ReleaseProductName)_$(ReleaseInformationalVersion)_x64</OutputName>
+    <SuppressIces>ICE61</SuppressIces>
+    <DefineConstants>PublishDir=$(PublishDir);AppIconPath=$(AppIconPath);ReleaseProductName=$(ReleaseProductName);ReleaseProductVersion=$(ReleaseProductVersion);ReleaseInformationalVersion=$(ReleaseInformationalVersion)</DefineConstants>
   </PropertyGroup>
 </Project>

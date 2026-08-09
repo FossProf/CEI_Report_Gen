@@ -8,10 +8,40 @@
 
 ## Installer Procedure
 
-1. Obtain `SPINgen_0.3.0-alpha_x64.msi`.
-2. Run the MSI.
-3. Accept the installation prompts.
-4. Launch the application from the Start Menu entry `SPINgen`.
+1. Build a release with `.\scripts\build-release.ps1`.
+2. Obtain `artifacts\installer\SPINgen_0.3.0-alpha_x64.msi`.
+3. Optionally keep `artifacts\release\SPINgen_0.3.0-alpha_win-x64.zip` for portable diagnostics.
+4. Run the MSI.
+5. Accept the installation prompts.
+6. Launch the application from the Start Menu entry `SPINgen`.
+
+## Building a Release
+
+Preferred local command:
+
+```powershell
+.\scripts\build-release.ps1
+```
+
+This command:
+
+- cleans old `artifacts/publish`, `artifacts/installer`, and `artifacts/release`
+- restores, builds, and tests the solution
+- publishes the current win-x64 self-contained app
+- verifies the published executable version
+- builds the MSI from that verified publish output
+- creates a portable ZIP and SHA-256 hashes
+
+Important output directories:
+
+- `artifacts/publish/win-x64/`
+- `artifacts/installer/`
+- `artifacts/release/`
+
+Diagnostic-only alternatives:
+
+- `.\scripts\build-release.ps1 -SkipInstaller`
+- `.\scripts\publish-release.ps1`
 
 ## Installed Application Location
 
@@ -56,6 +86,9 @@ Windows SmartScreen may warn on first launch or install. Future release engineer
 - Generated error logs are written next to the affected report folder as `generation-error.log`.
 - Preview files are written under a report `working\` folder.
 - If installation fails, re-run the MSI with administrator permissions where required for a per-machine install.
+- If `SPINgen is currently running`, close it before invoking `build-release.ps1`.
+- If artifact cleanup fails, close Explorer windows or other processes holding files under `artifacts\`.
+- If WiX packaging is denied or unavailable, use `.\scripts\build-release.ps1 -SkipInstaller` to produce a verified publish and portable ZIP without MSI packaging.
 
 ## Clean-Machine Acceptance Test
 

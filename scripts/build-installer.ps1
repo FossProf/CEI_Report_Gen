@@ -1,21 +1,79 @@
-$ErrorActionPreference = 'Stop'
+param(
+    [ValidateSet('Debug', 'Release')]
+    [string]$Configuration = 'Release',
 
-$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$publishDir = [IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts\publish\win-x64'))
+    [string]$PublishDir,
+
+    [string]$ManifestPath,
+
+    [string]$OutputDir
+)
+
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'ReleaseCommon.ps1')
+
+$repoRoot = Get-RepositoryRoot -ScriptRoot $PSScriptRoot
+$metadata = Get-AppReleaseMetadata -RepositoryRoot $repoRoot
+$publishDir = if ([string]::IsNullOrWhiteSpace($PublishDir)) { Join-Path $repoRoot 'artifacts\publish\win-x64' } else { [IO.Path]::GetFullPath($PublishDir) }
+$manifestPath = if ([string]::IsNullOrWhiteSpace($ManifestPath)) { Join-Path $publishDir 'release-manifest.json' } else { [IO.Path]::GetFullPath($ManifestPath) }
+$outputDir = if ([string]::IsNullOrWhiteSpace($OutputDir)) { Join-Path $repoRoot 'artifacts\installer' } else { [IO.Path]::GetFullPath($OutputDir) }
 $installerProjectDir = Join-Path $repoRoot 'installer\CEI.ReportGenerator.Installer'
 $generatedWxs = Join-Path $installerProjectDir 'GeneratedFiles.wxs'
 $installerProject = Join-Path $installerProjectDir 'CEI.ReportGenerator.Installer.wixproj'
 $iconPath = Join-Path $repoRoot 'src\CEI.ReportGenerator.App\Assets\AppIcon.ico'
-$outputDir = Join-Path $repoRoot 'artifacts\installer'
+$expectedExe = Join-Path $publishDir 'CEI.ReportGenerator.App.exe'
+$expectedDll = Join-Path $publishDir 'CEI.ReportGenerator.App.dll'
+$expectedTemplate = Join-Path $publishDir 'Templates\CEI_Base_Template_Refined.docx'
+$expectedMsi = Join-Path $outputDir $metadata.InstallerFileName
+$expectedWixPdb = [IO.Path]::ChangeExtension($expectedMsi, '.wixpdb')
+
+New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+
+foreach ($existingArtifact in @($expectedMsi, $expectedWixPdb)) {
+    if (Test-Path -LiteralPath $existingArtifact) {
+        Remove-Item -LiteralPath $existingArtifact -Force -ErrorAction Stop
+        if (Test-Path -LiteralPath $existingArtifact) {
+            throw "Could not remove previous installer artifact: $existingArtifact"
+        }
+    }
+}
 
 if (-not (Test-Path -LiteralPath $publishDir)) {
     throw "Publish directory not found: $publishDir"
 }
 
-New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+$publishFiles = Get-ChildItem -LiteralPath $publishDir -File -Recurse | Sort-Object FullName
+if ($publishFiles.Count -eq 0) {
+    throw "Publish directory is empty: $publishDir"
+}
+
+foreach ($requiredPath in @($expectedExe, $expectedDll, $expectedTemplate, $manifestPath, $iconPath)) {
+    if (-not (Test-Path -LiteralPath $requiredPath)) {
+        throw "Required release input not found: $requiredPath"
+    }
+}
+
+$publishManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$publishManifest.commit)) {
+    throw "Publish manifest commit is missing: $manifestPath"
+}
+
+if ([string]::IsNullOrWhiteSpace([string]$publishManifest.version)) {
+    throw "Publish manifest version is missing: $manifestPath"
+}
+
+if ($publishManifest.version -ne $metadata.InformationalVersion) {
+    throw "Publish manifest version '$($publishManifest.version)' does not match source version '$($metadata.InformationalVersion)'."
+}
+
+if ($publishManifest.fileVersion -ne $metadata.FileVersion) {
+    throw "Publish manifest fileVersion '$($publishManifest.fileVersion)' does not match source file version '$($metadata.FileVersion)'."
+}
+
+$publishInfo = Get-ExecutableVersionMetadata -Path $expectedExe
+Assert-PublishedExecutableMatchesMetadata -ExpectedMetadata $metadata -PublishedExecutableMetadata $publishInfo -Stage 'INSTALLER INPUT VERIFICATION'
 
 $directories = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-$files = Get-ChildItem -LiteralPath $publishDir -File -Recurse | Sort-Object FullName
 
 function Get-SafeId {
     param(
@@ -62,7 +120,7 @@ function Get-DirectoryDepth {
     return ($Path -split '[\\/]').Count
 }
 
-foreach ($file in $files) {
+foreach ($file in $publishFiles) {
     $relativeDirectory = [IO.Path]::GetDirectoryName((Get-RelativePath -BasePath $publishDir -TargetPath $file.FullName))
     while (-not [string]::IsNullOrWhiteSpace($relativeDirectory)) {
         [void]$directories.Add($relativeDirectory)
@@ -99,7 +157,7 @@ foreach ($directory in $directories | Sort-Object { Get-DirectoryDepth $_ }, { $
 [void]$builder.AppendLine('    <ComponentGroup Id="PublishedApplicationFiles">')
 
 $counter = 0
-foreach ($file in $files) {
+foreach ($file in $publishFiles) {
     $counter++
     $relativePath = Get-RelativePath -BasePath $publishDir -TargetPath $file.FullName
     $relativeDirectory = [IO.Path]::GetDirectoryName($relativePath)
@@ -114,23 +172,35 @@ foreach ($file in $files) {
     $escapedName = Escape-Xml $file.Name
     [void]$builder.AppendLine("      <Component Id=""$componentId"" Guid=""*"" Directory=""$directoryId"">")
     [void]$builder.AppendLine("        <File Id=""$fileId"" Source=""$escapedSource"" Name=""$escapedName"" KeyPath=""yes"" />")
-    [void]$builder.AppendLine("        </Component>")
+    [void]$builder.AppendLine('        </Component>')
 }
 
 [void]$builder.AppendLine('    </ComponentGroup>')
 [void]$builder.AppendLine('  </Fragment>')
 [void]$builder.AppendLine('</Wix>')
 
-Set-Content -LiteralPath $generatedWxs -Value $builder.ToString() -Encoding UTF8
+[IO.File]::WriteAllText($generatedWxs, $builder.ToString(), [Text.UTF8Encoding]::new($false))
 
-dotnet build $installerProject `
-  --configuration Release `
-  /p:PublishDir=$publishDir `
-  /p:AppIconPath=$iconPath `
-  /p:OutputPath=$outputDir
+$buildStartedUtc = (Get-Date).ToUniversalTime()
+Invoke-NativeCommand -Stage 'INSTALLER' -FilePath 'dotnet' -Arguments @(
+    'build',
+    $installerProject,
+    '--configuration', $Configuration,
+    ('/p:PublishDir="{0}"' -f $publishDir),
+    ('/p:AppIconPath="{0}"' -f $iconPath),
+    ('/p:ReleaseProductName="{0}"' -f $metadata.Product),
+    ('/p:ReleaseProductVersion="{0}"' -f $metadata.Version),
+    ('/p:ReleaseInformationalVersion="{0}"' -f $metadata.InformationalVersion),
+    ('/p:OutputPath="{0}"' -f $outputDir)
+) -WorkingDirectory $repoRoot
 
-if ($LASTEXITCODE -ne 0) {
-    throw 'MSI build failed.'
+if (-not (Test-Path -LiteralPath $expectedMsi)) {
+    throw "Installer build completed but expected MSI was not created: $expectedMsi"
 }
 
-Write-Host ('Installer completed: ' + (Join-Path $outputDir 'SPINgen_0.3.0-alpha_x64.msi'))
+$installerItem = Get-Item -LiteralPath $expectedMsi
+if ($installerItem.LastWriteTimeUtc -lt $buildStartedUtc) {
+    throw "Installer file was not refreshed during the current run: $expectedMsi"
+}
+
+Write-Host ('Installer completed: ' + $expectedMsi)

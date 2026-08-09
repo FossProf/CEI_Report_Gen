@@ -37,13 +37,31 @@ dotnet run --project src/CEI.ReportGenerator.App
 ## Building a Release
 
 ```powershell
-pwsh ./scripts/publish-release.ps1
-pwsh ./scripts/build-installer.ps1
+.\scripts\build-release.ps1
 ```
 
 Publish output: `artifacts/publish/win-x64/`
 
 Installer output: `artifacts/installer/SPINgen_0.3.0-alpha_x64.msi`
+
+Release output: `artifacts/release/`
+
+`build-release.ps1` is the authoritative local release command. It:
+
+- cleans stale artifact directories
+- restores, builds, and optionally smoke-tests the solution
+- publishes the current application to `artifacts/publish/win-x64/`
+- verifies the published executable version against the source version
+- generates a publish `release-manifest.json`
+- builds the MSI only from verified publish output
+- creates a portable ZIP from the verified publish directory
+- writes SHA-256 hashes and a final release manifest
+
+Useful options:
+
+- `.\scripts\build-release.ps1 -SkipInstaller`
+- `.\scripts\build-release.ps1 -SkipTests`
+- `.\scripts\build-release.ps1 -KeepArtifacts`
 
 Deployment guidance: [Deployment](docs/Deployment.md)
 
@@ -167,3 +185,10 @@ dotnet src\CEI.ReportGenerator.SmokeTests\bin\Debug\net8.0\CEI.ReportGenerator.S
 ```
 
 Set `CEI_KEEP_WORKSPACE=1` to keep the temporary workspace the test uses for inspection.
+
+## Release Troubleshooting
+
+- If you see `SPINgen is currently running`, close the application and retry.
+- If artifact cleanup fails, close Explorer windows or processes holding files under `artifacts\`.
+- If WiX packaging is unavailable in the environment, run `.\scripts\build-release.ps1 -SkipInstaller` to produce a verified publish and portable ZIP without MSI packaging.
+- Windows SmartScreen may warn because current alpha installers are unsigned.
