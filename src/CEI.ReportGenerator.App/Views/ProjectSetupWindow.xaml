@@ -4,7 +4,7 @@
         Title="Project Setup"
         Height="620" Width="640"
         WindowStartupLocation="CenterOwner">
-    <Grid Margin="16">
+    <Grid Margin="16" Background="{StaticResource AppBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
@@ -12,7 +12,12 @@
 
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <TextBlock FontSize="16" FontWeight="SemiBold" Text="Project Configuration" Margin="0,0,0,12"/>
+                <Border Style="{StaticResource SectionDividerStyle}">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SectionIconPath}"/>
+                        <TextBlock Text="Project Configuration" Style="{StaticResource PageTitleText}"/>
+                    </StackPanel>
+                </Border>
 
                 <TextBlock Text="Project name *" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="NameBox" Style="{StaticResource FieldBox}"/>
@@ -37,6 +42,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBox x:Name="FolderBox" Grid.Column="0" Style="{StaticResource FieldBox}" IsReadOnly="True" IsEnabled="False"/>
                     <Button x:Name="FolderBrowseButton" Grid.Column="1" Content="Browse..." Margin="6,0,0,0"
+                            Style="{StaticResource SecondaryButton}"
                             Padding="10,4" Click="FolderBrowseButton_Click"/>
                 </Grid>
 
@@ -48,14 +54,21 @@
                     </Grid.ColumnDefinitions>
                     <TextBox x:Name="TemplateBox" Grid.Column="0" Style="{StaticResource FieldBox}"/>
                     <Button Grid.Column="1" Content="Browse..." Margin="6,0,0,0"
+                            Style="{StaticResource SecondaryButton}"
                             Padding="10,4" Click="TemplateBrowseButton_Click"/>
                 </Grid>
 
-                <TextBlock Text="Signature images (stored in the project's Signatures folder)" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                <Border Style="{StaticResource SectionDividerStyle}" Margin="0,18,0,10">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconPersonBadgeGeometry}" Style="{StaticResource SectionIconPath}"/>
+                        <TextBlock Text="Signature Images" Style="{StaticResource SectionTitleText}"/>
+                    </StackPanel>
+                </Border>
+                <TextBlock Text="Stored in the project's Signatures folder." Style="{StaticResource SecondaryText}" Margin="0,0,0,6"/>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <Button Content="Open Signatures Folder" Width="150" Padding="8,4"
+                    <Button Content="Open Signatures Folder" Width="150" Style="{StaticResource SecondaryButton}" Padding="8,4"
                             Click="OpenSignatureFolderButton_Click"/>
-                    <Button Content="Refresh" Width="90" Margin="8,0,0,0" Padding="8,4"
+                    <Button Content="Refresh" Width="90" Margin="8,0,0,0" Style="{StaticResource QuietButton}" Padding="8,4"
                             Click="RefreshSignaturesButton_Click"/>
                 </StackPanel>
 
@@ -67,7 +80,7 @@
                     </Grid.ColumnDefinitions>
                     <ComboBox x:Name="InspectorSigCombo" Grid.Column="0" IsEditable="False"
                               Padding="4,3" FontSize="13"/>
-                    <Button Grid.Column="1" Content="Import..." Margin="6,0,0,0" Padding="10,4"
+                    <Button Grid.Column="1" Content="Import..." Margin="6,0,0,0" Style="{StaticResource SecondaryButton}" Padding="10,4"
                             Click="InspectorSigImportButton_Click"/>
                 </Grid>
 
@@ -79,19 +92,19 @@
                     </Grid.ColumnDefinitions>
                     <ComboBox x:Name="PMSigCombo" Grid.Column="0" IsEditable="False"
                               Padding="4,3" FontSize="13"/>
-                    <Button Grid.Column="1" Content="Import..." Margin="6,0,0,0" Padding="10,4"
+                    <Button Grid.Column="1" Content="Import..." Margin="6,0,0,0" Style="{StaticResource SecondaryButton}" Padding="10,4"
                             Click="PMSigImportButton_Click"/>
                 </Grid>
 
-                <TextBlock x:Name="ErrorText" Foreground="#B00020" TextWrapping="Wrap" Margin="0,12,0,0"
+                <TextBlock x:Name="ErrorText" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="0,12,0,0"
                            Visibility="Collapsed"/>
             </StackPanel>
         </ScrollViewer>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Content="Cancel" Width="100" Margin="0,0,8,0" Padding="8,5"
+            <Button Content="Cancel" Width="100" Margin="0,0,8,0" Style="{StaticResource SecondaryButton}" Padding="8,5"
                     IsCancel="True"/>
-            <Button x:Name="SaveButton" Content="Save Project" Width="120" Padding="8,5"
+            <Button x:Name="SaveButton" Content="Save Project" Width="120" Style="{StaticResource PrimaryButton}" Padding="8,5"
                     IsDefault="True" Click="SaveButton_Click"/>
         </StackPanel>
     </Grid>

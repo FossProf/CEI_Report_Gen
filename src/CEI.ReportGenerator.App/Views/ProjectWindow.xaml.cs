@@ -229,10 +229,10 @@ public partial class ProjectWindow : Window
     private void RefreshReadinessPanel()
     {
         var readiness = _dashboardSummary.Readiness;
-        ApplyReadinessText(TemplateReadinessText, "Template", readiness.TemplateReady, readiness.TemplateIssues, "Attention");
-        ApplyReadinessText(InspectorReadinessText, "Inspector Signature", readiness.InspectorSignatureReady, readiness.InspectorSignatureIssues, "Missing/Invalid");
-        ApplyReadinessText(ProjectManagerReadinessText, "Project Manager Signature", readiness.ProjectManagerSignatureReady, readiness.ProjectManagerSignatureIssues, "Missing/Invalid");
-        ApplyReadinessText(ConfigurationReadinessText, "Project Configuration", readiness.ProjectConfigurationReady, readiness.ProjectConfigurationIssues, "Attention");
+        ApplyReadinessText(TemplateReadinessIcon, TemplateReadinessText, "Template", readiness.TemplateReady, readiness.TemplateIssues, "Attention");
+        ApplyReadinessText(InspectorReadinessIcon, InspectorReadinessText, "Inspector Signature", readiness.InspectorSignatureReady, readiness.InspectorSignatureIssues, "Missing/Invalid");
+        ApplyReadinessText(ProjectManagerReadinessIcon, ProjectManagerReadinessText, "Project Manager Signature", readiness.ProjectManagerSignatureReady, readiness.ProjectManagerSignatureIssues, "Missing/Invalid");
+        ApplyReadinessText(ConfigurationReadinessIcon, ConfigurationReadinessText, "Project Configuration", readiness.ProjectConfigurationReady, readiness.ProjectConfigurationIssues, "Attention");
     }
 
     private void RefreshStatusBar()
@@ -240,6 +240,9 @@ public partial class ProjectWindow : Window
         StatusBarProjectText.Text = $"Project: {_dashboardSummary.ProjectName}";
         StatusBarNextReportText.Text = $"Next Report: {_dashboardSummary.NextReportNumberText}";
         StatusBarReadinessText.Text = $"Status: {_dashboardSummary.StatusText}";
+        StatusBarReadinessIndicator.Fill = _dashboardSummary.Readiness.IsReady
+            ? (Brush)FindResource("StatusReadyBrush")
+            : (Brush)FindResource("StatusWarningBrush");
     }
 
     private void RefreshReportLoadWarning()
@@ -260,10 +263,13 @@ public partial class ProjectWindow : Window
             MessageBoxImage.Warning);
     }
 
-    private static void ApplyReadinessText(TextBlock target, string label, bool isReady, IReadOnlyList<string> issues, string notReadyText)
+    private void ApplyReadinessText(System.Windows.Shapes.Path iconTarget, TextBlock target, string label, bool isReady, IReadOnlyList<string> issues, string notReadyText)
     {
-        target.Text = isReady ? $"✓ {label}: Ready" : $"✖ {label}: {notReadyText}";
+        target.Text = isReady ? $"{label}: Ready" : $"{label}: {notReadyText}";
+        iconTarget.Data = (Geometry)FindResource(isReady ? "IconCheckCircleGeometry" : "IconExclamationTriangleGeometry");
+        iconTarget.Fill = (Brush)FindResource(isReady ? "StatusReadyBrush" : "StatusWarningBrush");
         ToolTipService.SetToolTip(target, issues.Count == 0 ? null : string.Join(Environment.NewLine, issues));
+        ToolTipService.SetToolTip(iconTarget, issues.Count == 0 ? null : string.Join(Environment.NewLine, issues));
     }
 
     private void CreateNewReport()

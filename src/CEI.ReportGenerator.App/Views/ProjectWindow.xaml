@@ -5,34 +5,74 @@
         Height="650" Width="880"
         WindowStartupLocation="CenterOwner"
         PreviewKeyDown="Window_PreviewKeyDown">
-    <DockPanel>
+    <DockPanel Background="{StaticResource AppBackgroundBrush}">
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
-                <MenuItem Header="_New Report" InputGestureText="Ctrl+N" Click="NewReportMenuItem_Click"/>
+                <MenuItem Header="_New Report" InputGestureText="Ctrl+N" Click="NewReportMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconPlusCircleGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
                 <Separator/>
-                <MenuItem Header="Open Project _Folder" Click="OpenProjectFolderMenuItem_Click"/>
+                <MenuItem Header="Open Project _Folder" Click="OpenProjectFolderMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
                 <MenuItem Header="_Close Project" Click="CloseProjectMenuItem_Click"/>
                 <Separator/>
                 <MenuItem Header="E_xit" Click="ExitMenuItem_Click"/>
             </MenuItem>
             <MenuItem Header="_Project">
-                <MenuItem Header="Project _Settings..." InputGestureText="Ctrl+Shift+S" Click="ProjectSettingsMenuItem_Click"/>
+                <MenuItem Header="Project _Settings..." InputGestureText="Ctrl+Shift+S" Click="ProjectSettingsMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconPencilGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
                 <MenuItem Header="_Validate Project" Click="ValidateProjectMenuItem_Click"/>
                 <Separator/>
-                <MenuItem Header="Open _Reports Folder" Click="OpenReportsFolderMenuItem_Click"/>
-                <MenuItem Header="Open S_ignatures Folder" Click="OpenSignaturesFolderMenuItem_Click"/>
+                <MenuItem Header="Open _Reports Folder" Click="OpenReportsFolderMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Open S_ignatures Folder" Click="OpenSignaturesFolderMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconPersonBadgeGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="_Report">
-                <MenuItem x:Name="OpenSelectedReportMenuItem" Header="_Open Selected Report" Click="OpenSelectedReportMenuItem_Click"/>
-                <MenuItem x:Name="OpenSelectedReportFolderMenuItem" Header="Open Selected Report _Folder" Click="OpenSelectedReportFolderMenuItem_Click"/>
+                <MenuItem x:Name="OpenSelectedReportMenuItem" Header="_Open Selected Report" Click="OpenSelectedReportMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconFileEarmarkTextGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem x:Name="OpenSelectedReportFolderMenuItem" Header="Open Selected Report _Folder" Click="OpenSelectedReportFolderMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
                 <Separator/>
-                <MenuItem x:Name="NewReportFromSelectedMenuItem" Header="_New Report from Selected..." Click="NewReportFromSelectedMenuItem_Click"/>
+                <MenuItem x:Name="NewReportFromSelectedMenuItem" Header="_New Report from Selected..." Click="NewReportFromSelectedMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconCopyGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="_Tools">
-                <MenuItem Header="_Application Settings..." InputGestureText="Ctrl+," Click="ApplicationSettingsMenuItem_Click"/>
+                <MenuItem Header="_Application Settings..." InputGestureText="Ctrl+," Click="ApplicationSettingsMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconGearGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="_Help">
-                <MenuItem Header="_About" Click="AboutMenuItem_Click"/>
+                <MenuItem Header="_About" Click="AboutMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconInfoCircleGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
         </Menu>
 
@@ -46,7 +86,10 @@
             </StatusBarItem>
             <Separator/>
             <StatusBarItem>
-                <TextBlock x:Name="StatusBarReadinessText"/>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="StatusBarReadinessIndicator" Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="StatusBarReadinessText"/>
+                </StackPanel>
             </StatusBarItem>
         </StatusBar>
 
@@ -58,7 +101,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4" Padding="12">
+            <Border Grid.Row="0" Style="{StaticResource PanelCardStyle}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="2.1*"/>
@@ -78,17 +121,18 @@
                         </Grid.ColumnDefinitions>
 
                         <TextBlock x:Name="ProjectTitle" Grid.Row="0" Grid.Column="0"
-                                   FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                   Style="{StaticResource PageTitleText}" TextWrapping="Wrap"/>
                         <TextBlock x:Name="ProjectNumberText" Grid.Row="0" Grid.Column="1"
-                                   FontSize="16" FontWeight="SemiBold" Margin="16,0,0,0"
+                                   FontSize="15" FontWeight="SemiBold" Margin="16,0,0,0"
+                                   Foreground="{StaticResource BrandGoldBrush}"
                                    VerticalAlignment="Top"/>
 
                         <TextBlock x:Name="OwnerText" Grid.Row="1" Grid.ColumnSpan="2"
-                                   Foreground="#666666" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                   Style="{StaticResource SecondaryText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                         <TextBlock x:Name="ContractManagerText" Grid.Row="2" Grid.ColumnSpan="2"
-                                   Foreground="#666666" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                   Style="{StaticResource SecondaryText}" Margin="0,2,0,0" TextWrapping="Wrap"/>
                         <TextBlock x:Name="GeneralContractorText" Grid.Row="3" Grid.ColumnSpan="2"
-                                   Foreground="#666666" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                   Style="{StaticResource SecondaryText}" Margin="0,2,0,0" TextWrapping="Wrap"/>
                     </Grid>
 
                     <Grid Grid.Column="1" Margin="20,0,0,0">
@@ -103,16 +147,16 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Next Report:" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Next Report:" Style="{StaticResource StatusText}"/>
                         <TextBlock x:Name="NextReportText" Grid.Row="0" Grid.Column="1" Margin="10,0,0,0"/>
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Reports:" Margin="0,6,0,0" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Reports:" Margin="0,6,0,0" Style="{StaticResource StatusText}"/>
                         <TextBlock x:Name="TotalReportsText" Grid.Row="1" Grid.Column="1" Margin="10,6,0,0"/>
 
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Final:" Margin="0,2,0,0" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Final:" Margin="0,2,0,0" Style="{StaticResource StatusText}"/>
                         <TextBlock x:Name="FinalReportsText" Grid.Row="2" Grid.Column="1" Margin="10,2,0,0"/>
 
-                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Draft:" Margin="0,2,0,0" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Draft:" Margin="0,2,0,0" Style="{StaticResource StatusText}"/>
                         <TextBlock x:Name="DraftReportsText" Grid.Row="3" Grid.Column="1" Margin="10,2,0,0"/>
                     </Grid>
                 </Grid>
@@ -126,25 +170,47 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="NewReportButton" Content="New Report" Width="120" Padding="8,5"
-                                FontWeight="SemiBold" Click="NewReportButton_Click"/>
-                        <TextBlock x:Name="LoadIssuesText" Margin="12,0,0,0" Foreground="#8A5A00"
+                        <Button x:Name="NewReportButton" Width="136" Padding="8,5"
+                                FontWeight="SemiBold" Style="{StaticResource PrimaryButton}" Click="NewReportButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Data="{StaticResource IconPlusCircleGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                                <TextBlock Text="New Report"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock x:Name="LoadIssuesText" Margin="12,0,0,0" Foreground="{StaticResource StatusWarningBrush}"
                                    VerticalAlignment="Center" Visibility="Collapsed"/>
                     </StackPanel>
                 </StackPanel>
 
-                <Border Grid.Column="1" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4" Padding="10" Margin="20,0,0,0">
+                <Border Grid.Column="1" Style="{StaticResource PanelCardStyle}" Margin="20,0,0,0">
                     <StackPanel>
-                        <TextBlock Text="Project Readiness" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                        <TextBlock x:Name="TemplateReadinessText" Margin="0,0,0,4" TextWrapping="Wrap"/>
-                        <TextBlock x:Name="InspectorReadinessText" Margin="0,0,0,4" TextWrapping="Wrap"/>
-                        <TextBlock x:Name="ProjectManagerReadinessText" Margin="0,0,0,4" TextWrapping="Wrap"/>
-                        <TextBlock x:Name="ConfigurationReadinessText" TextWrapping="Wrap"/>
+                        <Border Style="{StaticResource SectionDividerStyle}">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Data="{StaticResource IconCheckCircleGeometry}" Style="{StaticResource SectionIconPath}"/>
+                                <TextBlock Text="Project Readiness" Style="{StaticResource SectionTitleText}"/>
+                            </StackPanel>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Path x:Name="TemplateReadinessIcon" Style="{StaticResource SmallIconPath}" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="TemplateReadinessText" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Path x:Name="InspectorReadinessIcon" Style="{StaticResource SmallIconPath}" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="InspectorReadinessText" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Path x:Name="ProjectManagerReadinessIcon" Style="{StaticResource SmallIconPath}" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="ProjectManagerReadinessText" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Path x:Name="ConfigurationReadinessIcon" Style="{StaticResource SmallIconPath}" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="ConfigurationReadinessText" TextWrapping="Wrap"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
+            <Border Grid.Row="2" Style="{StaticResource PanelCardStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -152,11 +218,16 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Inspection Reports" FontWeight="SemiBold" Margin="10,8,10,4"/>
+                    <Border Grid.Row="0" Style="{StaticResource SectionDividerStyle}" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource IconFileEarmarkTextGeometry}" Style="{StaticResource SectionIconPath}"/>
+                            <TextBlock Text="Inspection Reports" Style="{StaticResource SectionTitleText}"/>
+                        </StackPanel>
+                    </Border>
                     <TextBlock x:Name="EmptyReportsText" Grid.Row="1" Margin="10,0,10,6"
-                               Foreground="#777777" Visibility="Collapsed"
+                               Foreground="{StaticResource SecondaryTextBrush}" Visibility="Collapsed"
                                Text="No reports have been created for this project."/>
-                    <DataGrid x:Name="ReportsGrid" Grid.Row="2" Margin="6,0,6,6"
+                    <DataGrid x:Name="ReportsGrid" Grid.Row="2"
                               IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False"
                               SelectionMode="Single" HeadersVisibility="Column"
                               MouseDoubleClick="ReportsGrid_MouseDoubleClick"
@@ -166,7 +237,11 @@
                             <ContextMenu>
                                 <MenuItem x:Name="NewReportFromThisReportContextMenuItem"
                                           Header="New Report from This Report..."
-                                          Click="NewReportFromThisReportContextMenuItem_Click"/>
+                                          Click="NewReportFromThisReportContextMenuItem_Click">
+                                    <MenuItem.Icon>
+                                        <Path Data="{StaticResource IconCopyGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                         <DataGrid.Columns>
@@ -181,14 +256,34 @@
             </Border>
 
             <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button x:Name="OpenReportButton" Content="Open Report" Width="110" Margin="0,0,8,0" Padding="8,5"
-                        Click="OpenReportButton_Click"/>
-                <Button x:Name="ReportFolderButton" Content="Report Folder" Width="110" Margin="0,0,8,0" Padding="8,5"
-                        Click="ReportFolderButton_Click"/>
-                <Button x:Name="EditProjectButton" Content="Edit Project" Width="105" Margin="0,0,8,0" Padding="8,5"
-                        Click="EditProjectButton_Click"/>
-                <Button x:Name="ProjectFolderButton" Content="Project Folder" Width="110" Padding="8,5"
-                        Click="ProjectFolderButton_Click"/>
+                <Button x:Name="OpenReportButton" Width="122" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource SecondaryButton}"
+                        Click="OpenReportButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconFileEarmarkTextGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                        <TextBlock Text="Open Report"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ReportFolderButton" Width="126" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource SecondaryButton}"
+                        Click="ReportFolderButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                        <TextBlock Text="Report Folder"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="EditProjectButton" Width="118" Margin="0,0,8,0" Padding="8,5" Style="{StaticResource QuietButton}"
+                        Click="EditProjectButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconPencilGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                        <TextBlock Text="Edit Project"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ProjectFolderButton" Width="126" Padding="8,5" Style="{StaticResource QuietButton}"
+                        Click="ProjectFolderButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                        <TextBlock Text="Project Folder"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
     </DockPanel>

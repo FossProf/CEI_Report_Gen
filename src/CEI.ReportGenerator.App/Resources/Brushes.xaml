@@ -1,0 +1,25 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="AppBackgroundBrush" Color="{StaticResource CeiBackgroundColor}"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource CeiPanelColor}"/>
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="{StaticResource CeiCharcoalColor}"/>
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="{StaticResource CeiSupportingGrayColor}"/>
+    <SolidColorBrush x:Key="MutedTextBrush" Color="{StaticResource CeiMutedTextColor}"/>
+    <SolidColorBrush x:Key="PrimaryAccentBrush" Color="{StaticResource CeiTealColor}"/>
+    <SolidColorBrush x:Key="SecondaryAccentBrush" Color="{StaticResource CeiTealSecondaryColor}"/>
+    <SolidColorBrush x:Key="PrimaryAccentDarkBrush" Color="{StaticResource CeiTealDarkColor}"/>
+    <SolidColorBrush x:Key="PrimaryAccentDarkerBrush" Color="{StaticResource CeiTealDarkerColor}"/>
+    <SolidColorBrush x:Key="BrandGoldBrush" Color="{StaticResource CeiGoldColor}"/>
+    <SolidColorBrush x:Key="GoldTintBrush" Color="{StaticResource CeiGoldTintColor}"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource CeiBorderColor}"/>
+    <SolidColorBrush x:Key="SelectionBrush" Color="{StaticResource CeiSelectionColor}"/>
+    <SolidColorBrush x:Key="SelectionBorderBrush" Color="{StaticResource CeiSelectionBorderColor}"/>
+    <SolidColorBrush x:Key="HeaderBrush" Color="{StaticResource CeiHeaderTintColor}"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource CeiHoverColor}"/>
+    <SolidColorBrush x:Key="StatusReadyBrush" Color="{StaticResource CeiReadyColor}"/>
+    <SolidColorBrush x:Key="StatusWarningBrush" Color="{StaticResource CeiWarningColor}"/>
+    <SolidColorBrush x:Key="StatusErrorBrush" Color="{StaticResource CeiErrorColor}"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource CeiErrorColor}"/>
+    <SolidColorBrush x:Key="DangerTintBrush" Color="{StaticResource CeiErrorTintColor}"/>
+    <SolidColorBrush x:Key="WhiteBrush" Color="{StaticResource CeiWhiteColor}"/>
+</ResourceDictionary>

@@ -6,7 +6,7 @@
         SizeToContent="Height"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner">
-    <Grid Margin="16">
+    <Grid Margin="16" Background="{StaticResource AppBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -14,14 +14,15 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock x:Name="PromptText"
-                   FontSize="16"
-                   FontWeight="SemiBold"
-                   TextWrapping="Wrap"/>
+        <StackPanel Orientation="Horizontal">
+            <Path Data="{StaticResource IconCopyGeometry}" Style="{StaticResource SectionIconPath}"/>
+            <TextBlock x:Name="PromptText"
+                       Style="{StaticResource PageTitleText}"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
 
-        <TextBlock Grid.Row="1"
-                   Margin="0,12,0,0"
-                   TextWrapping="Wrap">
+        <Border Grid.Row="1" Margin="0,12,0,0" Style="{StaticResource PanelCardStyle}">
+            <TextBlock TextWrapping="Wrap">
             <Run Text="The following information will be copied:"/>
             <LineBreak/>
             <Run Text="- Location"/>
@@ -33,11 +34,11 @@
             <Run Text="- Description of Work"/>
             <LineBreak/>
             <Run Text="- Drawings Reviewed"/>
-        </TextBlock>
+            </TextBlock>
+        </Border>
 
-        <TextBlock Grid.Row="2"
-                   Margin="0,12,0,0"
-                   TextWrapping="Wrap">
+        <Border Grid.Row="2" Margin="0,12,0,0" Style="{StaticResource PanelCardStyle}">
+            <TextBlock TextWrapping="Wrap">
             <Run Text="The following will start blank:"/>
             <LineBreak/>
             <Run Text="- Weather"/>
@@ -54,7 +55,8 @@
             <Run x:Name="NewReportNumberText"/>
             <LineBreak/>
             <Run x:Name="NewReportDateText"/>
-        </TextBlock>
+            </TextBlock>
+        </Border>
 
         <StackPanel Grid.Row="3"
                     Margin="0,16,0,0"
@@ -62,11 +64,13 @@
                     HorizontalAlignment="Right">
             <Button Width="110"
                     Margin="0,0,8,0"
+                    Style="{StaticResource PrimaryButton}"
                     Padding="10,5"
                     Content="Create Report"
                     IsDefault="True"
                     Click="CreateReportButton_Click"/>
             <Button Width="80"
+                    Style="{StaticResource SecondaryButton}"
                     Padding="10,5"
                     Content="Cancel"
                     IsCancel="True"/>

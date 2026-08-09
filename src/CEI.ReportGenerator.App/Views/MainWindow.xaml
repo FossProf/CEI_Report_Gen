@@ -6,20 +6,36 @@
         WindowStartupLocation="CenterScreen"
         Loaded="Window_Loaded"
         PreviewKeyDown="Window_PreviewKeyDown">
-    <DockPanel>
+    <DockPanel Background="{StaticResource AppBackgroundBrush}">
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
-                <MenuItem Header="_New Project..." InputGestureText="Ctrl+N" Click="NewProjectMenuItem_Click"/>
-                <MenuItem Header="_Open Project..." InputGestureText="Ctrl+O" Click="OpenProjectMenuItem_Click"/>
+                <MenuItem Header="_New Project..." InputGestureText="Ctrl+N" Click="NewProjectMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconPlusCircleGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Open Project..." InputGestureText="Ctrl+O" Click="OpenProjectMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
                 <MenuItem x:Name="RecentProjectsMenuItem" Header="_Recent Projects"/>
                 <Separator/>
                 <MenuItem Header="E_xit" Click="ExitMenuItem_Click"/>
             </MenuItem>
             <MenuItem Header="_Tools">
-                <MenuItem Header="_Application Settings..." InputGestureText="Ctrl+," Click="ApplicationSettingsMenuItem_Click"/>
+                <MenuItem Header="_Application Settings..." InputGestureText="Ctrl+," Click="ApplicationSettingsMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconGearGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="_Help">
-                <MenuItem Header="_About" Click="AboutMenuItem_Click"/>
+                <MenuItem Header="_About" Click="AboutMenuItem_Click">
+                    <MenuItem.Icon>
+                        <Path Data="{StaticResource IconInfoCircleGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource PrimaryAccentBrush}"/>
+                    </MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
         </Menu>
 
@@ -31,19 +47,30 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" FontSize="20" FontWeight="SemiBold"
-                       Text="Special Inspection Report Generator" Margin="0,0,0,4"/>
-            <TextBlock Grid.Row="1" Text="Create or open a project, then generate inspection reports from the approved CEI template."
-                       Foreground="#666666" Margin="0,0,0,12"/>
+            <Border Grid.Row="0" Grid.RowSpan="2" Style="{StaticResource SectionDividerStyle}">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconSpeedometer2Geometry}" Style="{StaticResource SectionIconPath}"/>
+                        <TextBlock Text="Special Inspection Report Generator" Style="{StaticResource AppTitleText}"/>
+                    </StackPanel>
+                    <TextBlock Text="Create or open a project, then generate inspection reports from the approved CEI template."
+                               Style="{StaticResource SecondaryText}" Margin="0,6,0,0"/>
+                </StackPanel>
+            </Border>
 
-            <Border Grid.Row="2" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="4">
+            <Border Grid.Row="2" Style="{StaticResource PanelCardStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Recent Projects" FontWeight="SemiBold" Margin="10,8,10,4"/>
-                    <ListBox x:Name="RecentList" Grid.Row="1" Margin="6,0,6,6"
+                    <Border Grid.Row="0" Style="{StaticResource SectionDividerStyle}" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SectionIconPath}"/>
+                            <TextBlock Text="Recent Projects" Style="{StaticResource SectionTitleText}"/>
+                        </StackPanel>
+                    </Border>
+                    <ListBox x:Name="RecentList" Grid.Row="1"
                              MouseDoubleClick="RecentList_MouseDoubleClick"
                              SelectionChanged="RecentList_SelectionChanged"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -52,11 +79,15 @@
                                 <StackPanel Margin="4">
                                     <StackPanel.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Remove from list" Click="RemoveRecentItem_Click" Tag="{Binding}"/>
+                                            <MenuItem Header="Remove from list" Click="RemoveRecentItem_Click" Tag="{Binding}">
+                                                <MenuItem.Icon>
+                                                    <Path Data="{StaticResource IconTrashGeometry}" Style="{StaticResource SmallIconPath}" Fill="{StaticResource DangerBrush}"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
                                         </ContextMenu>
                                     </StackPanel.ContextMenu>
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
-                                    <TextBlock Text="{Binding FolderPath}" Foreground="#777777" FontSize="11"
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource BodyText}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding FolderPath}" Style="{StaticResource SecondaryText}" FontSize="11"
                                                TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
                             </DataTemplate>
@@ -66,14 +97,34 @@
             </Border>
 
             <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                <Button x:Name="OpenSelectedButton" Content="Open Selected" Width="120" Margin="0,0,8,0"
-                        Padding="8,5" Click="OpenSelectedButton_Click"/>
-                <Button x:Name="RemoveSelectedButton" Content="Remove Selected" Width="130" Margin="0,0,8,0"
-                        Padding="8,5" Click="RemoveSelectedButton_Click"/>
-                <Button x:Name="OpenProjectButton" Content="Open Project..." Width="130" Margin="0,0,8,0"
-                        Padding="8,5" Click="OpenProjectButton_Click"/>
-                <Button x:Name="NewProjectButton" Content="New Project..." Width="130"
-                        Padding="8,5" Click="NewProjectButton_Click"/>
+                <Button x:Name="OpenSelectedButton" Width="128" Margin="0,0,8,0"
+                        Style="{StaticResource SecondaryButton}" Click="OpenSelectedButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                        <TextBlock Text="Open Selected"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="RemoveSelectedButton" Width="140" Margin="0,0,8,0"
+                        Style="{StaticResource DangerButton}" Click="RemoveSelectedButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconTrashGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                        <TextBlock Text="Remove Selected"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="OpenProjectButton" Width="138" Margin="0,0,8,0"
+                        Style="{StaticResource SecondaryButton}" Click="OpenProjectButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconFolder2OpenGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                        <TextBlock Text="Open Project..."/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="NewProjectButton" Width="136"
+                        Style="{StaticResource PrimaryButton}" Click="NewProjectButton_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Data="{StaticResource IconPlusCircleGeometry}" Style="{StaticResource SmallIconPath}" Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" Margin="0,0,6,0"/>
+                        <TextBlock Text="New Project..."/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
     </DockPanel>
