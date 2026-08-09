@@ -434,7 +434,7 @@ public partial class ReportEditorWindow : Window
         Directory.CreateDirectory(folder);
         var logPath = Path.Combine(folder, "generation-error.log");
         var builder = new System.Text.StringBuilder();
-        builder.AppendLine("CEI Report Generator - generation diagnostics");
+        builder.AppendLine("SPINgen - generation diagnostics");
         builder.AppendLine("Timestamp: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         builder.AppendLine("Stage: " + stage);
         builder.AppendLine("Errors:");

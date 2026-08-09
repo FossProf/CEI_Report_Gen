@@ -50,7 +50,7 @@ public static class ReportGenerator
             throw new InvalidOperationException("The preview document no longer exists. Generate the report again before finalizing.");
         }
 
-        var finalPath = ProjectLayout.FinalReportPath(project, report.Number);
+        var finalPath = ProjectLayout.FinalReportPath(project, report);
         if (File.Exists(finalPath))
         {
             throw new InvalidOperationException($"Final report {report.Number} already exists and will not be overwritten.");
@@ -70,7 +70,7 @@ public static class ReportGenerator
         var previousProjectJsonPath = project.FilePath;
         var previousReportJson = File.Exists(previousReportJsonPath) ? File.ReadAllBytes(previousReportJsonPath) : null;
         var previousProjectJson = File.Exists(previousProjectJsonPath) ? File.ReadAllBytes(previousProjectJsonPath) : null;
-        var stagedFinalPath = ProjectLayout.FinalizingReportPath(project, report.Number);
+        var stagedFinalPath = ProjectLayout.FinalizingReportPath(project, report);
         var rollbackFailures = new List<string>();
         var reportPersisted = false;
         var projectPersisted = false;

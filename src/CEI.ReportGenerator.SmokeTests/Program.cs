@@ -36,7 +36,7 @@ try
     var settingsPath = Path.Combine(workspace, "settings", "settings.json");
     var settingsStore = new ApplicationSettingsStore(settingsPath);
     var defaultSettings = settingsStore.Load();
-    Assert(defaultSettings.DefaultProjectsFolder == Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "CEI Report Generator", "Projects"),
+    Assert(defaultSettings.DefaultProjectsFolder == Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SPINgen", "Projects"),
         "no settings file returns default projects folder");
     Assert(defaultSettings.RecentProjectLimit == 10, "no settings file returns default recent project limit");
     Assert(defaultSettings.ReopenLastProjectOnStartup == false, "no settings file returns default startup reopen value");
@@ -83,6 +83,26 @@ try
     var startupPath = ApplicationSettingsBehavior.GetStartupReopenProjectPath(missingStartupSettings, settingsStore);
     Assert(startupPath is null, "startup reopen ignores missing path safely");
     Assert(settingsStore.Load().LastOpenedProjectPath is null, "missing startup reopen path is cleared safely");
+
+    var currentSettingsPath = Path.Combine(workspace, "settings_migration", "SPINgen", "settings.json");
+    var legacySettingsPath = Path.Combine(workspace, "settings_migration", "CEI Report Generator", "settings.json");
+    Directory.CreateDirectory(Path.GetDirectoryName(legacySettingsPath)!);
+    File.WriteAllText(
+        legacySettingsPath,
+        """
+        {
+          "defaultProjectsFolder": "C:\\LegacyProjects",
+          "recentProjectLimit": 9,
+          "reopenLastProjectOnStartup": true,
+          "lastOpenedProjectPath": "C:\\LegacyProjects\\Demo"
+        }
+        """);
+    var migratedSettingsStore = new ApplicationSettingsStore(currentSettingsPath, legacySettingsPath);
+    var migratedSettings = migratedSettingsStore.Load();
+    Assert(migratedSettings.DefaultProjectsFolder == @"C:\LegacyProjects", "legacy settings file is loaded when the SPINgen settings file does not exist");
+    Assert(migratedSettings.RecentProjectLimit == 9, "legacy settings keeps recent project limit");
+    Assert(migratedSettings.ReopenLastProjectOnStartup, "legacy settings keeps startup reopen preference");
+    Assert(migratedSettings.LastOpenedProjectPath == @"C:\LegacyProjects\Demo", "legacy settings keeps last opened project path");
 
     Console.WriteLine("\n== Project readiness and dashboard ==");
     var readinessTemplatePath = Path.Combine(root, "templates", "CEI_Base_Template_Refined.docx");
@@ -232,7 +252,7 @@ try
 
     var finalSource = MakeReport(draftFactoryProject, 4, 2, "Cloudy", readinessPhotos);
     finalSource.Status = ReportStatus.Final;
-    finalSource.OutputFileName = "Report_0004_Final.docx";
+    finalSource.OutputFileName = "2026-08-01 Draft Factory SPIN Report #0004.docx";
     finalSource.CreatedUtc = new DateTime(2026, 8, 1, 12, 30, 0, DateTimeKind.Utc);
 
     var duplicatedFromFinal = ReportDraftFactory.CreateFromExisting(draftFactoryProject, finalSource);
@@ -259,7 +279,7 @@ try
     Assert(finalSource.Locations != duplicatedFromFinal.Locations, "editing duplicated report does not change source location");
     Assert(finalSource.Inspectors != duplicatedFromFinal.Inspectors, "editing duplicated report does not change source inspectors");
     Assert(finalSource.Photos.Count == 2, "editing duplicated report does not change source photos");
-    Assert(finalSource.OutputFileName == "Report_0004_Final.docx", "editing duplicated report does not change source output file");
+    Assert(finalSource.OutputFileName == "2026-08-01 Draft Factory SPIN Report #0004.docx", "editing duplicated report does not change source output file");
     Assert(finalSource.Status == ReportStatus.Final, "editing duplicated report does not change final source status");
 
     var draftSource = MakeReport(draftFactoryProject, 7, 1, "Rain", readinessPhotos);
@@ -544,11 +564,13 @@ try
     var sourceNames = finalizeReport.Photos.Select(p => Path.GetFileName(p.SourcePath)).OrderBy(n => n).ToArray();
     Assert(storedNames.SequenceEqual(sourceNames), "stored photos keep original file names (order-independent)");
 
-    var finalReportPath = ProjectLayout.FinalReportPath(project, finalizeReport.Number);
+    var finalReportPath = ProjectLayout.FinalReportPath(project, finalizeReport);
     Assert(!File.Exists(finalReportPath), "final report file does not exist before accept");
     ReportGenerator.FinalizeReport(project, finalizeReport, finalizeResult!.OutputPath);
     Assert(finalizeReport.Status == ReportStatus.Final, "report status is Final");
     Assert(File.Exists(finalReportPath), "final report file exists after accept");
+    Assert(Path.GetFileName(finalReportPath) == "2026-08-05 Demo Project SPIN Report #0004.docx", "final report file uses the SPIN naming pattern");
+    Assert(finalizeReport.OutputFileName == "2026-08-05 Demo Project SPIN Report #0004.docx", "finalized report stores the SPIN output file name");
     Assert(!File.Exists(ProjectLayout.ReportPreviewPath(project, finalizeReport.Number)), "preview cleaned up after finalization");
 
     var finalProject = ProjectStore.Load(projectFolder);
@@ -568,7 +590,7 @@ try
         templatePath, photoFiles[0], photoFiles[1]);
     var collisionReport = MakeReport(collisionProject, 1, 1, "Sunny", photoFiles);
     var collisionPreview = ReportGenerator.GenerateDraft(collisionProject, collisionReport);
-    var collisionFinalPath = ProjectLayout.FinalReportPath(collisionProject, 1);
+    var collisionFinalPath = ProjectLayout.FinalReportPath(collisionProject, collisionReport);
     Directory.CreateDirectory(Path.GetDirectoryName(collisionFinalPath)!);
     File.WriteAllText(collisionFinalPath, "existing final report");
     var beforeHash = FileHash(collisionFinalPath);
@@ -637,7 +659,7 @@ try
     }
 
     Assert(File.Exists(rollbackPreviewPath), "preview still exists after rollback-triggering finalization failure");
-    Assert(!File.Exists(ProjectLayout.FinalReportPath(rollbackProject, 1)), "final report not promoted after rollback failure");
+    Assert(!File.Exists(ProjectLayout.FinalReportPath(rollbackProject, rollbackReport)), "final report not promoted after rollback failure");
     Assert(!Directory.EnumerateFiles(ProjectLayout.ReportFolder(rollbackProject, 1), "*.finalizing.docx", SearchOption.TopDirectoryOnly).Any(),
         "no finalizing artifacts remain after rollback");
     Assert(rollbackProject.NextReportNumber == 1, "in-memory next report restored after rollback");

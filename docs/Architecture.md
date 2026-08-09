@@ -58,7 +58,7 @@
 
 `Final`
 
-- Finalization stages a `.finalizing.docx`, persists `report.json` and `project.json`, then promotes the staged document to `<number>_SpecialInspectionReport.docx`.
+- Finalization stages a `.finalizing.docx`, persists `report.json` and `project.json`, then promotes the staged document to `YYYY-MM-DD {project name} SPIN Report #{report number}.docx`.
 - On failure, preview and prior persisted state are preserved or restored.
 
 ## Directory Structure
@@ -91,7 +91,7 @@ Project-local runtime data:
 `-- Reports/
     `-- 0001/
         |-- report.json
-        |-- 0001_SpecialInspectionReport.docx
+        |-- 2026-08-05 Demo Project SPIN Report #0001.docx
         |-- photos/
         `-- working/
             `-- preview.docx

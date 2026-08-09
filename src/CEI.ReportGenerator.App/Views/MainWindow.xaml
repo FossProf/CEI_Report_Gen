@@ -1,7 +1,7 @@
 <Window x:Class="CEI.ReportGenerator.App.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="CEI Report Generator"
+        Title="SPINgen"
         Height="480" Width="680"
         WindowStartupLocation="CenterScreen"
         Loaded="Window_Loaded"
@@ -56,9 +56,9 @@
                            Margin="0,0,0,10"/>
                     <StackPanel Orientation="Horizontal">
                         <Path Data="{StaticResource IconSpeedometer2Geometry}" Style="{StaticResource SectionIconPath}"/>
-                        <TextBlock Text="Special Inspection Report Generator" Style="{StaticResource AppTitleText}"/>
+                        <TextBlock Text="SPINgen" Style="{StaticResource AppTitleText}"/>
                     </StackPanel>
-                    <TextBlock Text="Create or open a project, then generate inspection reports from the approved CEI template."
+                    <TextBlock Text="Create or open a project, then generate SPIN reports from the approved CEI template."
                                Style="{StaticResource SecondaryText}" Margin="0,6,0,0"/>
                 </StackPanel>
             </Border>

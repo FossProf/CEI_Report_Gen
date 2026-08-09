@@ -187,8 +187,9 @@ public static class ReportStore
             }
 
             var reportJson = Path.Combine(dir, "report.json");
-            var finalDocx = Path.Combine(dir, ProjectLayout.DefaultReportFileName(number));
-            if (File.Exists(reportJson) || File.Exists(finalDocx))
+            var hasFinalDocx = Directory.EnumerateFiles(dir, "*.docx", SearchOption.TopDirectoryOnly)
+                .Any(path => !Path.GetFileName(path).StartsWith(".", StringComparison.Ordinal));
+            if (File.Exists(reportJson) || hasFinalDocx)
             {
                 occupied.Add(number);
             }

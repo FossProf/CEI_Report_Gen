@@ -1,6 +1,6 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package
-    Name="CEI Report Generator"
+    Name="SPINgen"
     Manufacturer="Cornerstone Engineering / CEI"
     Version="0.1.0"
     UpgradeCode="8B29C486-81BF-49A5-94D0-D58A9D81186C"
@@ -8,8 +8,8 @@
     InstallerVersion="500"
     Compressed="yes">
 
-    <SummaryInformation Description="CEI Report Generator 0.1.0-alpha installer" Manufacturer="Cornerstone Engineering / CEI" />
-    <MajorUpgrade DowngradeErrorMessage="A newer version of CEI Report Generator is already installed." />
+    <SummaryInformation Description="SPINgen 0.1.0-alpha installer" Manufacturer="Cornerstone Engineering / CEI" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of SPINgen is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="AppIcon.ico" SourceFile="$(var.AppIconPath)" />
@@ -17,14 +17,14 @@
     <Property Id="ARPCOMMENTS" Value="Windows desktop application for creating standardized CEI inspection reports." />
 
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="CEI Report Generator" />
+      <Directory Id="INSTALLFOLDER" Name="SPINgen" />
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="ApplicationProgramsFolder" Name="CEI Report Generator" />
+      <Directory Id="ApplicationProgramsFolder" Name="SPINgen" />
     </StandardDirectory>
 
-    <Feature Id="MainFeature" Title="CEI Report Generator" Level="1">
+    <Feature Id="MainFeature" Title="SPINgen" Level="1">
       <ComponentGroupRef Id="PublishedApplicationFiles" />
       <ComponentRef Id="ApplicationShortcutComponent" />
     </Feature>
@@ -35,14 +35,14 @@
       <Component Id="ApplicationShortcutComponent" Guid="5AB7A9D2-292B-44C7-8B74-697517A4C6AA">
         <Shortcut
           Id="ApplicationStartMenuShortcut"
-          Name="CEI Report Generator"
-          Description="Launch CEI Report Generator"
+          Name="SPINgen"
+          Description="Launch SPINgen"
           Target="[INSTALLFOLDER]CEI.ReportGenerator.App.exe"
           WorkingDirectory="INSTALLFOLDER"
           Icon="AppIcon.ico" />
         <RemoveFile Id="ApplicationProgramsFolderFilesRemove" Name="*" On="uninstall" />
         <RemoveFolder Id="ApplicationProgramsFolderRemove" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\CEI Report Generator" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\SPINgen" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </DirectoryRef>
   </Fragment>

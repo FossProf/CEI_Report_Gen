@@ -39,7 +39,7 @@
             <TextBlock Text="Startup" Style="{StaticResource SectionTitleText}" Margin="0,16,0,0"/>
             <Separator Margin="0,4,0,8"/>
             <CheckBox x:Name="ReopenLastProjectCheckBox"
-                      Content="Reopen last project when CEI Report Generator starts"/>
+                      Content="Reopen last project when SPINgen starts"/>
 
             <TextBlock x:Name="ErrorText" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="0,12,0,0"
                        Visibility="Collapsed"/>

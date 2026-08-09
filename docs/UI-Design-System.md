@@ -1,6 +1,6 @@
 # UI Design System
 
-This document defines the CEI Report Generator light-theme visual system introduced in the UI/UX visual identity slice.
+This document defines the SPINgen light-theme visual system introduced in the UI/UX visual identity slice.
 
 ## Canonical CEI Colors
 

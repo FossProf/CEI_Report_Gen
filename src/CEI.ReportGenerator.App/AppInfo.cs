@@ -17,7 +17,7 @@ internal static class AppInfo
     }
 
     public static string GetAboutText()
-        => $"CEI Report Generator{Environment.NewLine}" +
+        => $"{AppIdentity.CurrentName}{Environment.NewLine}" +
            $"Version {GetDisplayVersion()}{Environment.NewLine}" +
-           ".NET desktop application for standardized CEI inspection reports.";
+           ".NET desktop application for standardized SPIN report generation.";
 }

@@ -186,7 +186,7 @@ public partial class ProjectWindow : Window
 
         ReportsGrid.ItemsSource = _currentLoadResult.Reports
             .OrderByDescending(r => r.Number)
-            .Select(r => new ReportListItem(r))
+            .Select(r => new ReportListItem(_project, r))
             .ToList();
 
         RefreshProjectHeader();
@@ -204,7 +204,7 @@ public partial class ProjectWindow : Window
         OwnerText.Text = $"Owner: {_dashboardSummary.Owner}";
         ContractManagerText.Text = $"Contract Manager: {_dashboardSummary.ContractManager}";
         GeneralContractorText.Text = $"General Contractor: {_dashboardSummary.GeneralContractor}";
-        Title = $"{_dashboardSummary.ProjectName} - CEI Report Generator";
+        Title = $"{_dashboardSummary.ProjectName} - {AppIdentity.CurrentName}";
     }
 
     private void RefreshReportCounts()
@@ -499,13 +499,13 @@ public partial class ProjectWindow : Window
         return null;
     }
 
-    public sealed record ReportListItem(InspectionReport Report)
+    public sealed record ReportListItem(Project Project, InspectionReport Report)
     {
         public string Number => ProjectLayout.FormatReportNumber(Report.Number);
         public string DateText => Report.Date.ToString("MMMM d, yyyy");
         public string Status => Report.Status == ReportStatus.Final ? "Final" : "Draft";
         public string FileName => string.IsNullOrWhiteSpace(Report.OutputFileName)
-            ? ProjectLayout.DefaultReportFileName(Report.Number)
+            ? ProjectLayout.DefaultReportFileName(Project, Report)
             : Report.OutputFileName;
         public int PhotosCount => Report.Photos.Count;
     }

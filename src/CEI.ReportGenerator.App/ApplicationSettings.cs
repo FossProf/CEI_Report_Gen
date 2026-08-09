@@ -25,8 +25,5 @@ public sealed class ApplicationSettings
         };
 
     private static string DefaultProjectsFolderPath()
-        => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "CEI Report Generator",
-            "Projects");
+        => AppIdentity.DefaultProjectsFolderPath();
 }

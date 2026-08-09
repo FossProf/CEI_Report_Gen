@@ -13,12 +13,12 @@ public sealed class ApplicationSettingsStore
         WriteIndented = true
     };
 
-    public ApplicationSettingsStore(string? filePath = null)
+    private readonly string? _legacyFilePath;
+
+    public ApplicationSettingsStore(string? filePath = null, string? legacyFilePath = null)
     {
-        FilePath = filePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "CEI Report Generator",
-            "settings.json");
+        FilePath = filePath ?? AppIdentity.DefaultSettingsFilePath();
+        _legacyFilePath = legacyFilePath ?? (filePath is null ? AppIdentity.LegacySettingsFilePath() : null);
     }
 
     public string FilePath { get; }
@@ -29,14 +29,22 @@ public sealed class ApplicationSettingsStore
     {
         LastLoadError = null;
 
-        if (!File.Exists(FilePath))
+        var loadPath = FilePath;
+        if (!File.Exists(loadPath))
         {
-            return ApplicationSettings.CreateDefaults();
+            if (!string.IsNullOrWhiteSpace(_legacyFilePath) && File.Exists(_legacyFilePath))
+            {
+                loadPath = _legacyFilePath;
+            }
+            else
+            {
+                return ApplicationSettings.CreateDefaults();
+            }
         }
 
         try
         {
-            var json = File.ReadAllText(FilePath);
+            var json = File.ReadAllText(loadPath);
             var settings = JsonSerializer.Deserialize<ApplicationSettings>(json, Options) ?? ApplicationSettings.CreateDefaults();
             settings.RecentProjectLimit = ApplicationSettingsValidator.NormalizeRecentProjectLimit(settings.RecentProjectLimit);
             if (string.IsNullOrWhiteSpace(settings.DefaultProjectsFolder))

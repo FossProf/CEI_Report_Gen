@@ -11,17 +11,17 @@
 1. Obtain `CEI_Report_Generator_0.1.0-alpha_x64.msi`.
 2. Run the MSI.
 3. Accept the installation prompts.
-4. Launch the application from the Start Menu entry `CEI Report Generator`.
+4. Launch the application from the Start Menu entry `SPINgen`.
 
 ## Installed Application Location
 
 Default application install location:
 
-`C:\Program Files\CEI Report Generator\`
+`C:\Program Files\SPINgen\`
 
 The deployed bundle includes the packaged template at:
 
-`C:\Program Files\CEI Report Generator\Templates\CEI_Base_Template_Refined.docx`
+`C:\Program Files\SPINgen\Templates\CEI_Base_Template_Refined.docx`
 
 The current alpha packaging uses a neutral placeholder application icon. Replace
 `src/CEI.ReportGenerator.App\Assets\AppIcon.ico` with an approved CEI asset before
@@ -33,7 +33,7 @@ User project data must remain outside the install directory.
 
 Preferred default user location:
 
-`%USERPROFILE%\Documents\CEI Report Generator\Projects\`
+`%USERPROFILE%\Documents\SPINgen\Projects\`
 
 The application may still let the user choose another writable project folder.
 

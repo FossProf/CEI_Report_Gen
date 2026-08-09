@@ -30,7 +30,7 @@ catch
     $commit = $null
 }
 
-Write-Host 'CEI Report Generator runner'
+Write-Host 'SPINgen runner'
 Write-Host ('Repository: ' + $repoRoot)
 if ($commit)
 {
