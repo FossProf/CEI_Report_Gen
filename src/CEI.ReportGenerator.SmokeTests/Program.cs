@@ -39,7 +39,16 @@ Console.WriteLine($"Workspace: {workspace}");
 try
 {
     Console.WriteLine("\n== Application settings ==");
-    var settingsPath = Path.Combine(workspace, "settings", "settings.json");
+    var settingsTestRoot = Path.Combine(workspace, "settings-tests");
+    Directory.CreateDirectory(settingsTestRoot);
+    var expectedDefaultSettingsPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "SPINgen",
+        "settings.json");
+    Assert(new ApplicationSettingsStore().FilePath == expectedDefaultSettingsPath,
+        "default settings path matches the SPINgen local application-data convention");
+
+    var settingsPath = Path.Combine(settingsTestRoot, "settings-roundtrip.json");
     var settingsStore = new ApplicationSettingsStore(settingsPath);
     var defaultSettings = settingsStore.Load();
     Assert(defaultSettings.DefaultProjectsFolder == Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "SPINgen", "Projects"),
@@ -61,10 +70,62 @@ try
     Assert(reloadedSettings.LastOpenedProjectPath == @"C:\Projects\Demo", "last opened project path persists");
     Assert(Directory.Exists(roundTripSettings.DefaultProjectsFolder), "valid default folder persists and exists");
 
-    File.WriteAllText(settingsPath, "{ malformed json");
-    var malformedSettings = settingsStore.Load();
+    var overwriteSettingsPath = Path.Combine(settingsTestRoot, "settings-overwrite.json");
+    var overwriteSettingsStore = new ApplicationSettingsStore(overwriteSettingsPath);
+    var initialOverwriteSettings = CreateWorkspaceBackedSettings(settingsTestRoot, "overwrite-projects-a");
+    initialOverwriteSettings.RecentProjectLimit = 4;
+    overwriteSettingsStore.Save(initialOverwriteSettings);
+    Assert(File.Exists(overwriteSettingsPath), "initial settings save creates the target file");
+    var replacementOverwriteSettings = CreateWorkspaceBackedSettings(settingsTestRoot, "overwrite-projects-b");
+    replacementOverwriteSettings.RecentProjectLimit = 6;
+    overwriteSettingsStore.Save(replacementOverwriteSettings);
+    var latestOverwriteSettings = overwriteSettingsStore.Load();
+    Assert(latestOverwriteSettings.DefaultProjectsFolder == replacementOverwriteSettings.DefaultProjectsFolder, "second settings save replaces the existing file");
+    Assert(latestOverwriteSettings.RecentProjectLimit == 6, "replaced settings file loads the latest values");
+
+    var malformedSettingsPath = Path.Combine(settingsTestRoot, "settings-malformed.json");
+    File.WriteAllText(malformedSettingsPath, "{ malformed json");
+    var malformedSettings = new ApplicationSettingsStore(malformedSettingsPath).Load();
     Assert(malformedSettings.DefaultProjectsFolder == ApplicationSettings.CreateDefaults().DefaultProjectsFolder, "malformed JSON returns default projects folder safely");
     Assert(malformedSettings.RecentProjectLimit == 10, "malformed JSON returns default recent project limit safely");
+
+    var missingTemperatureSettingsPath = Path.Combine(settingsTestRoot, "settings-missing-temperature.json");
+    File.WriteAllText(
+        missingTemperatureSettingsPath,
+        $$"""
+        {
+          "defaultProjectsFolder": "{{Path.Combine(settingsTestRoot, "legacy-compatible-projects").Replace("\\", "\\\\")}}",
+          "recentProjectLimit": 8,
+          "reopenLastProjectOnStartup": true,
+          "lastOpenedProjectPath": "{{Path.Combine(workspace, "legacy-compatible-project").Replace("\\", "\\\\")}}"
+        }
+        """);
+    var missingTemperatureSettings = new ApplicationSettingsStore(missingTemperatureSettingsPath).Load();
+    Assert(missingTemperatureSettings.TemperatureAssistance.TemperatureLookupEnabled, "missing temperature settings deserialize with defaults");
+    Assert(missingTemperatureSettings.TemperatureAssistance.TemperatureAutoEnabledForNewReports, "missing temperature auto default deserializes with defaults");
+    Assert(missingTemperatureSettings.TemperatureAssistance.HistoricalDayStartHour == 7, "missing temperature start hour deserializes with defaults");
+    Assert(missingTemperatureSettings.TemperatureAssistance.HistoricalDayEndHour == 17, "missing temperature end hour deserializes with defaults");
+
+    var normalizedTemperatureSettingsPath = Path.Combine(settingsTestRoot, "settings-invalid-temperature-hours.json");
+    File.WriteAllText(
+        normalizedTemperatureSettingsPath,
+        $$"""
+        {
+          "defaultProjectsFolder": "{{Path.Combine(settingsTestRoot, "normalized-projects").Replace("\\", "\\\\")}}",
+          "recentProjectLimit": 9,
+          "temperatureAssistance": {
+            "temperatureLookupEnabled": false,
+            "temperatureAutoEnabledForNewReports": false,
+            "historicalDayStartHour": 19,
+            "historicalDayEndHour": 19
+          }
+        }
+        """);
+    var normalizedTemperatureSettings = new ApplicationSettingsStore(normalizedTemperatureSettingsPath).Load();
+    Assert(!normalizedTemperatureSettings.TemperatureAssistance.TemperatureLookupEnabled, "temperature master enable persists through load normalization");
+    Assert(!normalizedTemperatureSettings.TemperatureAssistance.TemperatureAutoEnabledForNewReports, "temperature auto-default persists through load normalization");
+    Assert(normalizedTemperatureSettings.TemperatureAssistance.HistoricalDayStartHour == 7, "invalid historical start hour normalizes safely on load");
+    Assert(normalizedTemperatureSettings.TemperatureAssistance.HistoricalDayEndHour == 17, "invalid historical end hour normalizes safely on load");
 
     var invalidLimitSettings = ApplicationSettings.CreateDefaults();
     invalidLimitSettings.RecentProjectLimit = 0;
@@ -82,7 +143,7 @@ try
     Assert(resetSettings.ReopenLastProjectOnStartup == false, "reset-to-default values restore startup reopen");
     Assert(resetSettings.LastOpenedProjectPath is null, "reset-to-default values restore null last project path");
 
-    var missingStartupSettings = ApplicationSettings.CreateDefaults();
+    var missingStartupSettings = CreateWorkspaceBackedSettings(settingsTestRoot, "startup-projects");
     missingStartupSettings.ReopenLastProjectOnStartup = true;
     missingStartupSettings.LastOpenedProjectPath = Path.Combine(workspace, "missing_project");
     settingsStore.Save(missingStartupSettings);
@@ -90,25 +151,25 @@ try
     Assert(startupPath is null, "startup reopen ignores missing path safely");
     Assert(settingsStore.Load().LastOpenedProjectPath is null, "missing startup reopen path is cleared safely");
 
-    var currentSettingsPath = Path.Combine(workspace, "settings_migration", "SPINgen", "settings.json");
-    var legacySettingsPath = Path.Combine(workspace, "settings_migration", "CEI Report Generator", "settings.json");
+    var currentSettingsPath = Path.Combine(settingsTestRoot, "settings-migration", "SPINgen", "settings.json");
+    var legacySettingsPath = Path.Combine(settingsTestRoot, "settings-migration", "CEI Report Generator", "settings.json");
     Directory.CreateDirectory(Path.GetDirectoryName(legacySettingsPath)!);
     File.WriteAllText(
         legacySettingsPath,
-        """
+        $$"""
         {
-          "defaultProjectsFolder": "C:\\LegacyProjects",
+          "defaultProjectsFolder": "{{Path.Combine(settingsTestRoot, "legacy-projects").Replace("\\", "\\\\")}}",
           "recentProjectLimit": 9,
           "reopenLastProjectOnStartup": true,
-          "lastOpenedProjectPath": "C:\\LegacyProjects\\Demo"
+          "lastOpenedProjectPath": "{{Path.Combine(settingsTestRoot, "legacy-projects", "Demo").Replace("\\", "\\\\")}}"
         }
         """);
     var migratedSettingsStore = new ApplicationSettingsStore(currentSettingsPath, legacySettingsPath);
     var migratedSettings = migratedSettingsStore.Load();
-    Assert(migratedSettings.DefaultProjectsFolder == @"C:\LegacyProjects", "legacy settings file is loaded when the SPINgen settings file does not exist");
+    Assert(migratedSettings.DefaultProjectsFolder == Path.Combine(settingsTestRoot, "legacy-projects"), "legacy settings file is loaded when the SPINgen settings file does not exist");
     Assert(migratedSettings.RecentProjectLimit == 9, "legacy settings keeps recent project limit");
     Assert(migratedSettings.ReopenLastProjectOnStartup, "legacy settings keeps startup reopen preference");
-    Assert(migratedSettings.LastOpenedProjectPath == @"C:\LegacyProjects\Demo", "legacy settings keeps last opened project path");
+    Assert(migratedSettings.LastOpenedProjectPath == Path.Combine(settingsTestRoot, "legacy-projects", "Demo"), "legacy settings keeps last opened project path");
 
     Console.WriteLine("\n== Temperature assistance settings and session ==");
     Assert(defaultSettings.TemperatureAssistance.TemperatureLookupEnabled, "temperature lookup defaults enabled");
@@ -116,7 +177,7 @@ try
     Assert(defaultSettings.TemperatureAssistance.HistoricalDayStartHour == 7, "temperature assistance defaults to 7 AM start");
     Assert(defaultSettings.TemperatureAssistance.HistoricalDayEndHour == 17, "temperature assistance defaults to 5 PM end");
 
-    var roundTripTemperatureSettings = defaultSettings.Clone();
+    var roundTripTemperatureSettings = CreateWorkspaceBackedSettings(settingsTestRoot, "temperature-projects");
     roundTripTemperatureSettings.TemperatureAssistance.TemperatureLookupEnabled = false;
     roundTripTemperatureSettings.TemperatureAssistance.TemperatureAutoEnabledForNewReports = false;
     roundTripTemperatureSettings.TemperatureAssistance.HistoricalDayStartHour = 8;
@@ -956,7 +1017,7 @@ try
     Console.WriteLine("\n== Recent and startup reopen use final nested project folders ==");
     var nestedStartupSettingsPath = Path.Combine(workspace, "nested_settings", "settings.json");
     var nestedSettingsStore = new ApplicationSettingsStore(nestedStartupSettingsPath);
-    var nestedStartupSettings = nestedSettingsStore.Load();
+    var nestedStartupSettings = CreateWorkspaceBackedSettings(settingsTestRoot, "nested-startup-projects");
     nestedStartupSettings.ReopenLastProjectOnStartup = true;
     nestedStartupSettings.LastOpenedProjectPath = nestedProject.FolderPath;
     nestedSettingsStore.Save(nestedStartupSettings);
@@ -2612,6 +2673,13 @@ static void Assert(bool condition, string message)
     }
 
     Console.WriteLine($"  ok: {message}");
+}
+
+static ApplicationSettings CreateWorkspaceBackedSettings(string settingsTestRoot, string projectsFolderName)
+{
+    var settings = ApplicationSettings.CreateDefaults();
+    settings.DefaultProjectsFolder = Path.Combine(settingsTestRoot, projectsFolderName);
+    return settings;
 }
 
 file sealed class FakeProjectLocationResolver : IProjectLocationResolver
