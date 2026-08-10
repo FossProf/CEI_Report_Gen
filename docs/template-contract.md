@@ -1,6 +1,6 @@
 # Template Contract
 
-This document is the official contract for supported report-template placeholders and signature controls in the `0.3.1-alpha` SPINgen baseline.
+This document is the official contract for supported report-template placeholders and signature controls in the `0.4.0-alpha` SPINgen baseline.
 
 ## Text Placeholders
 

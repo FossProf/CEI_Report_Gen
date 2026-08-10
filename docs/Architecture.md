@@ -185,7 +185,7 @@ Supporting UI services:
 
 ## Stable Foundation Components
 
-The following systems are considered protected for the `0.3.1-alpha` SPINgen baseline and should only be changed for bug fixes or justified contract updates:
+The following systems are considered protected for the `0.4.0-alpha` SPINgen baseline and should only be changed for bug fixes or justified contract updates:
 
 - `ProjectStore`
 - `ReportStore`

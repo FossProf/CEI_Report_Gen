@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0-alpha - Historical Import and Temperature Baseline
+
+### Reporting
+
+- automatic current and historical temperature assistance
+- persisted project coordinates for explicit temperature/location resolution
+- finalization rollback hardening for unsaved-photo edge cases
+- pilot workflow polish for numbering, final-mode behavior, and photo handling
+
+### Historical Import
+
+- historical DOCX scan-session model and deterministic parser foundation
+- import review and correction workflow
+- destination-safe commit engine for importing selected historical reports
+- importer staging and contract hardening for real-project testing
+
+### Release
+
+- release metadata advanced to `0.4.0-alpha`
+- installer and portable package naming updated for the frozen importer checkpoint
+- current release documentation refreshed to point at the new baseline
+
 ## 0.3.1-alpha - Documentation and Release Refresh
 
 ### Documentation

@@ -9,8 +9,8 @@
 ## Installer Procedure
 
 1. Build a release with `.\scripts\build-release.ps1`.
-2. Obtain `artifacts\installer\SPINgen_0.3.1-alpha_x64.msi`.
-3. Optionally keep `artifacts\release\SPINgen_0.3.1-alpha_win-x64.zip` for portable diagnostics.
+2. Obtain `artifacts\installer\SPINgen_0.4.0-alpha_x64.msi`.
+3. Optionally keep `artifacts\release\SPINgen_0.4.0-alpha_win-x64.zip` for portable diagnostics.
 4. Run the MSI.
 5. Accept the installation prompts.
 6. Launch the application from the Start Menu entry `SPINgen`.
@@ -74,7 +74,7 @@ The application may still let the user choose another writable project folder.
 
 ## SmartScreen Note
 
-This `0.3.1-alpha` build is unsigned.
+This `0.4.0-alpha` build is unsigned.
 
 Windows SmartScreen may warn on first launch or install. Future release engineering can insert code signing at:
 

@@ -27,8 +27,8 @@ The release script:
 ## Expected Outputs
 
 - `artifacts\\publish\\win-x64\\`
-- `artifacts\\installer\\SPINgen_0.3.1-alpha_x64.msi`
-- `artifacts\\release\\SPINgen_0.3.1-alpha_win-x64.zip`
+- `artifacts\\installer\\SPINgen_0.4.0-alpha_x64.msi`
+- `artifacts\\release\\SPINgen_0.4.0-alpha_win-x64.zip`
 
 ## Common Variants
 
