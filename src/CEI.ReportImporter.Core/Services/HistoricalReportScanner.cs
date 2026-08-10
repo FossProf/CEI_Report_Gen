@@ -46,7 +46,10 @@ public sealed class HistoricalReportScanner
             StartedUtc = startedUtc,
             CompletedUtc = DateTime.UtcNow,
             ParserProfile = _parser.ProfileName,
-            Results = results
+            Results = results,
+            DestinationProjectFolder = options.DestinationProjectFolder,
+            DestinationProjectName = options.DestinationProjectName,
+            DestinationProjectNumber = options.DestinationProjectNumber
         };
     }
 }

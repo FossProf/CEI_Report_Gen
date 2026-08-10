@@ -91,6 +91,22 @@ public static class Validation
         return errors;
     }
 
+    public static List<string> ValidateReport(InspectionReport report)
+    {
+        var errors = new List<string>();
+        if (report.Number <= 0)
+        {
+            errors.Add("Report Number must be a positive whole number.");
+        }
+
+        if (report.Date == default)
+        {
+            errors.Add("Inspection Date is required.");
+        }
+
+        return errors;
+    }
+
     private static void AddRequired(List<string> errors, string label, string value)
     {
         if (string.IsNullOrWhiteSpace(value))

@@ -1,6 +1,6 @@
 namespace CEI.ReportImporter.Core.Models;
 
-public sealed record HistoricalScanSession
+public sealed class HistoricalScanSession
 {
     public required Guid SessionId { get; init; }
 
@@ -15,6 +15,26 @@ public sealed record HistoricalScanSession
     public required string ParserProfile { get; init; }
 
     public required IReadOnlyList<HistoricalScanResult> Results { get; init; }
+
+    public string DestinationProjectFolder { get; set; } = string.Empty;
+
+    public string DestinationProjectName { get; set; } = string.Empty;
+
+    public string DestinationProjectNumber { get; set; } = string.Empty;
+
+    public int DestinationProjectReportCount { get; set; }
+
+    public int ReadyCount { get; set; }
+
+    public int ImportedCount { get; set; }
+
+    public int SkippedCount { get; set; }
+
+    public int DuplicateCount { get; set; }
+
+    public int ErrorCount { get; set; }
+
+    public int SelectedCount { get; set; }
 
     public int FilesDiscovered => Results.Count;
 

@@ -1738,15 +1738,18 @@ try
     Assert(Directory.Exists(historicalImportResult.ReportFolder), "historical import creates the canonical report folder");
     Assert(File.Exists(historicalImportResult.ReportJsonPath), "historical import writes report.json");
     Assert(File.Exists(historicalImportResult.ImportMetadataPath), "historical import writes import-metadata.json");
+    Assert(Directory.Exists(Path.Combine(historicalImportResult.ReportFolder, ProjectLayout.PhotosFolderName)), "historical import creates an empty Photos folder");
+    Assert(!Directory.EnumerateFileSystemEntries(Path.Combine(historicalImportResult.ReportFolder, ProjectLayout.PhotosFolderName)).Any(), "historical import leaves the Photos folder empty in slice 6D");
     Assert(!Directory.EnumerateFiles(historicalImportResult.ReportFolder, "*.docx", SearchOption.TopDirectoryOnly).Any(), "historical import does not copy a DOCX into the report folder");
     Assert(!Directory.Exists(historicalAbandonedStagingFolder), "valid project import still cleans abandoned importing folders");
 
     var importedHistoricalReport = ReportStore.LoadReport(historicalImportProject, 216);
     Assert(importedHistoricalReport is not null, "historical import report reloads from report.json");
     Assert(importedHistoricalReport!.Status == ReportStatus.Final, "historical import persists Final status");
-    Assert(string.IsNullOrWhiteSpace(importedHistoricalReport.OutputFileName), "historical import keeps OutputFileName empty when no local DOCX exists");
+    Assert(importedHistoricalReport.OutputFileName == Path.GetFileName(historicalSourceDocx), "historical import records the original DOCX file name");
     Assert(importedHistoricalReport.Photos.Count == 0, "historical import stores no photos in the pilot slice");
-    Assert(importedHistoricalReport.CreatedUtc == historicalImportRequest.SourceCreatedUtc, "historical import uses SourceCreatedUtc when provided");
+    Assert(importedHistoricalReport.CreatedUtc >= historicalImportResult.Report!.CreatedUtc.AddSeconds(-1)
+        && importedHistoricalReport.CreatedUtc <= historicalImportResult.Report.CreatedUtc.AddSeconds(1), "historical import CreatedUtc reflects import time");
 
     var historicalMetadata = JsonStore.Load<HistoricalImportMetadata>(historicalImportResult.ImportMetadataPath);
     Assert(historicalMetadata is not null, "historical import metadata reloads");
@@ -1895,6 +1898,111 @@ try
     Assert(ReportStore.DeleteReport(deleteImportedProject, 44) == ReportStore.DeleteReportStatus.Deleted, "historical imported report deletes through the normal delete path");
     Assert(!Directory.Exists(deleteImportedResult.ReportFolder), "historical delete removes the canonical report folder");
     Assert(File.Exists(deleteImportedSourceDocx), "historical delete does not delete the source archive DOCX");
+
+    Console.WriteLine("\n== Historical import commit engine ==");
+    var batchImportProject = ProjectStore.Create(
+        Path.Combine(workspace, "historical_batch_project"), "Historical Batch", "2190", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var existingImportedDocx = Path.Combine(workspace, "historical_batch_existing.docx");
+    File.Copy(templatePath, existingImportedDocx, overwrite: true);
+    var existingImportResult = HistoricalReportImportService.Import(
+        batchImportProject,
+        new HistoricalReportImportRequest
+        {
+            Number = 44,
+            Date = new DateTime(2025, 7, 20),
+            Weather = "Sunny",
+            Locations = "Existing bay",
+            Inspectors = "Anthony Wintergerst",
+            PersonnelOnSite = "Existing Crew",
+            DescriptionOfWork = "Existing report to trigger duplicate detection.",
+            DrawingsReviewed = "HB-44",
+            Observations = "Existing imported report.",
+            SourceDocumentPath = existingImportedDocx
+        });
+    Assert(existingImportResult.Status == HistoricalReportImportStatus.Imported, "batch-import setup seeds an existing report");
+
+    var batchArchiveFolder = Path.Combine(workspace, "historical_batch_archive");
+    Directory.CreateDirectory(batchArchiveFolder);
+    var batchSource44 = Path.Combine(batchArchiveFolder, "2025-07-20 Existing SPIN Report #44.docx");
+    var batchSource300 = Path.Combine(batchArchiveFolder, "2025-07-21 Ready SPIN Report #300.docx");
+    var batchSource301 = Path.Combine(batchArchiveFolder, "2025-07-22 Failing SPIN Report #301.docx");
+    var batchSource302 = Path.Combine(batchArchiveFolder, "2025-07-23 Ready SPIN Report #302.docx");
+    File.Copy(templatePath, batchSource44, overwrite: true);
+    File.Copy(templatePath, batchSource300, overwrite: true);
+    File.Copy(templatePath, batchSource301, overwrite: true);
+    File.Copy(templatePath, batchSource302, overwrite: true);
+
+    var batchSession = new HistoricalScanSession
+    {
+        SessionId = Guid.NewGuid(),
+        SourceFolder = batchArchiveFolder,
+        IncludeSubfolders = true,
+        StartedUtc = DateTime.UtcNow,
+        CompletedUtc = DateTime.UtcNow,
+        ParserProfile = HistoricalReportImportService.DefaultParserProfile,
+        DestinationProjectFolder = batchImportProject.FolderPath,
+        DestinationProjectName = batchImportProject.Name,
+        DestinationProjectNumber = batchImportProject.Number,
+        Results =
+        [
+            CreateHistoricalScanResult(batchSource44, 44, new DateTime(2025, 7, 20), "Existing project", "Anthony Wintergerst", "Sunny", "Existing duplicate report."),
+            CreateHistoricalScanResult(batchSource300, 300, new DateTime(2025, 7, 21), "Ready project", "Anthony Wintergerst", "Cloudy", "Ready import number 300."),
+            CreateHistoricalScanResult(batchSource301, 301, new DateTime(2025, 7, 22), "Failing project", "Anthony Wintergerst", "Rainy", "Ready import number 301."),
+            CreateHistoricalScanResult(batchSource302, 302, new DateTime(2025, 7, 23), "Ready project", "Anthony Wintergerst", "Partly Cloudy", "Ready import number 302."),
+            CreateHistoricalScanResult(batchSource300, 0, default, "Missing data", "Anthony Wintergerst", "Sunny", "Invalid request."),
+            CreateHistoricalParseErrorScanResult(Path.Combine(batchArchiveFolder, "bad.docx"), "The parser could not recover this report.")
+        ]
+    };
+    var commitEngine = new HistoricalImportCommitEngine();
+    var batchReviewSession = commitEngine.CreateSession(batchSession, batchImportProject);
+    Assert(batchReviewSession.ScanSession.DestinationProjectFolder == batchImportProject.FolderPath, "batch session records the destination project folder");
+    Assert(batchReviewSession.ScanSession.DestinationProjectName == batchImportProject.Name, "batch session records the destination project name");
+    Assert(batchReviewSession.ScanSession.DestinationProjectReportCount == 1, "batch session records the destination report count");
+    Assert(batchReviewSession.ReadyCount == 3, "batch session marks three reports as ready before selection");
+    Assert(batchReviewSession.DuplicateCount == 1, "batch session marks existing report numbers as duplicates");
+    Assert(batchReviewSession.ErrorCount == 2, "batch session marks invalid or failed parses as errors");
+
+    var duplicateReviewItem = batchReviewSession.Items.First(item => item.WorkingRequest?.Number == 44);
+    duplicateReviewItem.IsSelected = true;
+    Assert(!duplicateReviewItem.IsSelected, "duplicate rows cannot be selected for import");
+    foreach (var item in batchReviewSession.Items.Where(item => item.ImportStatus == HistoricalImportItemStatus.Ready))
+    {
+        item.IsSelected = true;
+    }
+
+    HistoricalReportImportService.StageFailureHookForTesting = stagingFolder =>
+        stagingFolder.Contains(".0301.", StringComparison.OrdinalIgnoreCase)
+            ? new IOException("Injected historical import staging failure.")
+            : null;
+    HistoricalImportBatchResult batchImportResult;
+    try
+    {
+        batchImportResult = commitEngine.ImportSelected(batchReviewSession, batchImportProject);
+    }
+    finally
+    {
+        HistoricalReportImportService.StageFailureHookForTesting = null;
+    }
+
+    Assert(batchImportResult.ImportedCount == 2, "batch import imports multiple ready reports");
+    Assert(batchImportResult.ErrorCount == 1, "batch import records one per-report error and continues");
+    Assert(batchImportResult.DuplicateCount == 0, "batch import does not count unselected duplicates as attempted duplicates");
+    Assert(batchImportResult.SelectedCount == 3, "batch import records the selected ready rows");
+    Assert(batchReviewSession.ImportedCount == 2, "batch review session updates imported counts after commit");
+    Assert(ReportStore.LoadReport(batchImportProject, 300) is not null, "batch import writes the first selected report");
+    Assert(ReportStore.LoadReport(batchImportProject, 302) is not null, "batch import continues after a failing report");
+    Assert(ReportStore.LoadReport(batchImportProject, 301) is null, "batch import leaves the failing report absent");
+    Assert(Directory.Exists(ProjectLayout.ReportPhotosFolder(batchImportProject, 300)), "batch import creates an empty Photos folder for imported reports");
+    Assert(!Directory.EnumerateFileSystemEntries(ProjectLayout.ReportPhotosFolder(batchImportProject, 300)).Any(), "batch import leaves imported Photos folders empty");
+    var batchLoadResult = ReportStore.LoadAllReports(batchImportProject);
+    Assert(batchLoadResult.Reports.Count(report => report.Status == ReportStatus.Final) == 3, "batch import participates in dashboard-compatible final counts");
+    Assert(ProjectDashboardSummaryBuilder.Build(batchImportProject, batchLoadResult).TotalReports == 3, "batch import updates dashboard totals immediately");
+    Assert(SearchReportNumbers(batchLoadResult.Reports, new ReportSearchCriteria { SearchText = "Ready import number 300" }).SequenceEqual([300]), "batch import reports are immediately searchable");
+    Assert(ReportStore.GetNextReportNumber(batchImportProject) == 303, "batch import refreshes the destination next report number");
+    Assert(batchReviewSession.ImportLog.Count == 3, "batch import records an in-memory log entry per attempted selected report");
+    Assert(batchReviewSession.Items.First(item => item.WorkingRequest?.Number == 300).ImportStatus == HistoricalImportItemStatus.Imported, "batch review item status flips to Imported after success");
+    Assert(batchReviewSession.Items.First(item => item.WorkingRequest?.Number == 301).ImportStatus == HistoricalImportItemStatus.Conflict, "batch review item status shows per-report import failure");
 
     Console.WriteLine("\n== Historical import staging failure leaves no visible report ==");
     var historicalStagingProject = ProjectStore.Create(
@@ -2386,6 +2494,76 @@ static IReadOnlyList<int> SearchReportNumbers(IEnumerable<InspectionReport> repo
     => ReportSearchService.Filter(reports, criteria)
         .Select(report => report.Number)
         .ToList();
+
+static HistoricalScanResult CreateHistoricalScanResult(
+    string sourcePath,
+    int number,
+    DateTime date,
+    string projectName,
+    string inspector,
+    string weather,
+    string observations)
+{
+    var request = new HistoricalReportImportRequest
+    {
+        Number = number,
+        Date = date,
+        Weather = weather,
+        Temperature = "82",
+        Locations = "Imported location",
+        Inspectors = inspector,
+        PersonnelOnSite = "Imported crew",
+        DescriptionOfWork = "Imported work description.",
+        DrawingsReviewed = $"HX-{number}",
+        Observations = observations,
+        SourceDocumentPath = sourcePath,
+        ParserProfile = HistoricalReportImportService.DefaultParserProfile
+    };
+
+    return new HistoricalScanResult
+    {
+        SourceFilePath = sourcePath,
+        SourceFileName = Path.GetFileName(sourcePath),
+        ParseResult = new HistoricalReportParseResult
+        {
+            Status = HistoricalReportParseStatus.Parsed,
+            FilePath = sourcePath,
+            FileName = Path.GetFileName(sourcePath),
+            ParserProfile = HistoricalReportImportService.DefaultParserProfile,
+            OverallConfidence = HistoricalConfidenceLevel.High,
+            FieldConfidence = new HistoricalFieldConfidence
+            {
+                ReportNumber = HistoricalConfidenceLevel.High,
+                Date = HistoricalConfidenceLevel.High,
+                ProjectName = HistoricalConfidenceLevel.High,
+                Inspectors = HistoricalConfidenceLevel.High,
+                Weather = HistoricalConfidenceLevel.High,
+                Observations = HistoricalConfidenceLevel.High
+            },
+            Request = request,
+            ProjectName = projectName,
+            ReportNumber = number > 0 ? number : null,
+            Date = date == default ? null : date
+        }
+    };
+}
+
+static HistoricalScanResult CreateHistoricalParseErrorScanResult(string sourcePath, string failureMessage)
+    => new()
+    {
+        SourceFilePath = sourcePath,
+        SourceFileName = Path.GetFileName(sourcePath),
+        ParseResult = new HistoricalReportParseResult
+        {
+            Status = HistoricalReportParseStatus.Failed,
+            FilePath = sourcePath,
+            FileName = Path.GetFileName(sourcePath),
+            ParserProfile = HistoricalReportImportService.DefaultParserProfile,
+            OverallConfidence = HistoricalConfidenceLevel.Low,
+            FieldConfidence = new HistoricalFieldConfidence(),
+            FailureMessage = failureMessage
+        }
+    };
 
 static void ExpectGenerationFailure(Project project, InspectionReport report, GenerationStage expectedStage, Func<string, bool> messageCheck)
 {

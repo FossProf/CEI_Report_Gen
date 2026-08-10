@@ -7,6 +7,10 @@ namespace CEI.ReportImporter.Core.Models;
 
 public sealed class HistoricalReviewItem : INotifyPropertyChanged
 {
+    private HistoricalImportItemStatus _importStatus;
+    private string _reason = string.Empty;
+    private bool _isSelected;
+
     public HistoricalReviewItem(HistoricalScanResult scanResult)
     {
         ScanResult = scanResult ?? throw new ArgumentNullException(nameof(scanResult));
@@ -14,6 +18,7 @@ public sealed class HistoricalReviewItem : INotifyPropertyChanged
         WorkingRequest = OriginalRequest is null ? null : OriginalRequest with { };
         InitialReviewState = DetermineInitialReviewState(scanResult.ParseResult);
         ReviewState = InitialReviewState;
+        (_importStatus, _reason) = DetermineInitialImportState(scanResult);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -38,11 +43,62 @@ public sealed class HistoricalReviewItem : INotifyPropertyChanged
 
     public bool ParseSucceeded => ScanResult.ParseSucceeded;
 
-    public bool ReadyForImport => ReviewState == HistoricalReviewState.Ready && WorkingRequest is not null;
+    public bool ReadyForImport => ImportStatus == HistoricalImportItemStatus.Ready && WorkingRequest is not null;
+
+    public HistoricalImportItemStatus ImportStatus => _importStatus;
+
+    public string ImportStatusText => ImportStatus switch
+    {
+        HistoricalImportItemStatus.Ready => "Ready",
+        HistoricalImportItemStatus.Duplicate => "Duplicate",
+        HistoricalImportItemStatus.Conflict => "Conflict",
+        HistoricalImportItemStatus.ParseError => "Parse Error",
+        HistoricalImportItemStatus.MissingData => "Missing Data",
+        HistoricalImportItemStatus.Imported => "Imported",
+        HistoricalImportItemStatus.Skipped => "Skipped",
+        _ => ImportStatus.ToString()
+    };
+
+    public string Reason => string.IsNullOrWhiteSpace(_reason) ? "-" : _reason;
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            var nextValue = value && CanSelect;
+            if (_isSelected == nextValue)
+            {
+                return;
+            }
+
+            _isSelected = nextValue;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SelectionStateText));
+        }
+    }
+
+    public bool CanSelect => ImportStatus == HistoricalImportItemStatus.Ready;
+
+    public string SelectionStateText => IsSelected ? "Selected" : "Not Selected";
 
     public string SourceFilePath => ScanResult.SourceFilePath;
 
     public string SourceFileName => ScanResult.SourceFileName;
+
+    public string DisplayProject => string.IsNullOrWhiteSpace(ScanResult.ParseResult.ProjectName)
+        ? "-"
+        : ScanResult.ParseResult.ProjectName;
+
+    public string DisplayInspector => string.IsNullOrWhiteSpace(WorkingRequest?.Inspectors)
+        ? "-"
+        : WorkingRequest.Inspectors;
+
+    public string DisplayWeather => string.IsNullOrWhiteSpace(WorkingRequest?.Weather)
+        ? "-"
+        : WorkingRequest.Weather;
+
+    public string ReadyText => ReadyForImport ? "Yes" : "No";
 
     public string ReviewStateText => ReviewState switch
     {
@@ -156,6 +212,8 @@ public sealed class HistoricalReviewItem : INotifyPropertyChanged
             OnPropertyChanged(nameof(WorkingRequest));
             OnPropertyChanged(nameof(DisplayReportNumber));
             OnPropertyChanged(nameof(DisplayDate));
+            OnPropertyChanged(nameof(DisplayInspector));
+            OnPropertyChanged(nameof(DisplayWeather));
         }
 
         if (previousHasUserChanges != HasUserChanges)
@@ -168,8 +226,10 @@ public sealed class HistoricalReviewItem : INotifyPropertyChanged
         {
             OnPropertyChanged(nameof(ReviewState));
             OnPropertyChanged(nameof(ReviewStateText));
-            OnPropertyChanged(nameof(ReadyForImport));
         }
+
+        OnPropertyChanged(nameof(ReadyForImport));
+        OnPropertyChanged(nameof(ReadyText));
     }
 
     private void NotifyForStateOnlyChange(HistoricalReviewState previousReviewState)
@@ -182,10 +242,69 @@ public sealed class HistoricalReviewItem : INotifyPropertyChanged
         OnPropertyChanged(nameof(ReviewState));
         OnPropertyChanged(nameof(ReviewStateText));
         OnPropertyChanged(nameof(ReadyForImport));
+        OnPropertyChanged(nameof(ReadyText));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    public void ApplyImportStatus(HistoricalImportItemStatus status, string reason)
+    {
+        var previousStatus = _importStatus;
+        var previousReason = _reason;
+        var previousCanSelect = CanSelect;
+        var previousReady = ReadyForImport;
+        var previousDisplayWeather = DisplayWeather;
+        var previousDisplayInspector = DisplayInspector;
+
+        _importStatus = status;
+        _reason = reason ?? string.Empty;
+        if (!CanSelect)
+        {
+            _isSelected = false;
+        }
+
+        if (previousStatus != _importStatus)
+        {
+            OnPropertyChanged(nameof(ImportStatus));
+            OnPropertyChanged(nameof(ImportStatusText));
+        }
+
+        if (!string.Equals(previousReason, _reason, StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(Reason));
+        }
+
+        if (previousCanSelect != CanSelect)
+        {
+            OnPropertyChanged(nameof(CanSelect));
+        }
+
+        if (previousReady != ReadyForImport)
+        {
+            OnPropertyChanged(nameof(ReadyForImport));
+            OnPropertyChanged(nameof(ReadyText));
+        }
+
+        if (previousDisplayWeather != DisplayWeather)
+        {
+            OnPropertyChanged(nameof(DisplayWeather));
+        }
+
+        if (previousDisplayInspector != DisplayInspector)
+        {
+            OnPropertyChanged(nameof(DisplayInspector));
+        }
+
+        OnPropertyChanged(nameof(IsSelected));
+        OnPropertyChanged(nameof(SelectionStateText));
+    }
+
+    public void MarkImported(string reason)
+        => ApplyImportStatus(HistoricalImportItemStatus.Imported, reason);
+
+    public void MarkSkipped(string reason)
+        => ApplyImportStatus(HistoricalImportItemStatus.Skipped, reason);
 
     private static HistoricalReviewState DetermineInitialReviewState(HistoricalReportParseResult parseResult)
     {
@@ -201,5 +320,33 @@ public sealed class HistoricalReviewItem : INotifyPropertyChanged
         }
 
         return HistoricalReviewState.NeedsReview;
+    }
+
+    private static (HistoricalImportItemStatus Status, string Reason) DetermineInitialImportState(HistoricalScanResult scanResult)
+    {
+        if (!scanResult.ParseSucceeded)
+        {
+            return (HistoricalImportItemStatus.ParseError,
+                string.IsNullOrWhiteSpace(scanResult.ParseResult.FailureMessage)
+                    ? "The document could not be parsed."
+                    : scanResult.ParseResult.FailureMessage);
+        }
+
+        if (scanResult.ImportRequest is null)
+        {
+            return (HistoricalImportItemStatus.MissingData, "The document did not produce an importable report payload.");
+        }
+
+        if (scanResult.ImportRequest.Number <= 0)
+        {
+            return (HistoricalImportItemStatus.MissingData, "A positive report number is required.");
+        }
+
+        if (scanResult.ImportRequest.Date == default)
+        {
+            return (HistoricalImportItemStatus.MissingData, "An inspection date is required.");
+        }
+
+        return (HistoricalImportItemStatus.Ready, string.Empty);
     }
 }

@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using CEI.ReportGenerator.Core.Services;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportImporter.Core.Models;
 using CEI.ReportImporter.Core.Services;
@@ -13,19 +14,24 @@ namespace CEI.ReportImporter.App;
 public partial class MainWindow : Window
 {
     private readonly HistoricalReportScanner _scanner = new(new HistoricalDocumentParser());
+    private readonly HistoricalImportCommitEngine _commitEngine = new();
     private readonly HistoricalReviewValidator _reviewValidator = new();
     private readonly ObservableCollection<HistoricalReviewItem> _visibleResults = [];
 
     private HistoricalReviewSession? _currentReviewSession;
     private HistoricalReviewItem? _selectedReviewItem;
+    private Project? _destinationProject;
+    private CancellationTokenSource? _importCancellationSource;
     private bool _isLoadingSelection;
     private bool _isRefreshingCollection;
+    private bool _isImporting;
 
     public MainWindow()
     {
         InitializeComponent();
         ResultsGrid.ItemsSource = _visibleResults;
         ReviewFilterComboBox.SelectedIndex = 0;
+        DestinationProjectSummaryTextBlock.Text = "Choose an existing SPINgen project.";
         UpdateSelectionState();
     }
 
@@ -59,8 +65,32 @@ public partial class MainWindow : Window
         TryOpenPath(path, "Unable to open the source folder.");
     }
 
+    private void BrowseDestinationProjectButton_Click(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new Forms.FolderBrowserDialog
+        {
+            Description = "Select an existing SPINgen project folder."
+        };
+
+        if (dialog.ShowDialog() == Forms.DialogResult.OK)
+        {
+            LoadDestinationProject(dialog.SelectedPath, showErrors: true);
+        }
+    }
+
     private async void ScanButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_destinationProject is null)
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                "Choose an existing SPINgen destination project before scanning.",
+                "Destination Project Required",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
         if (_currentReviewSession?.HasInMemoryReviewWork == true)
         {
             var discard = System.Windows.MessageBox.Show(
@@ -84,10 +114,13 @@ public partial class MainWindow : Window
             var session = await Task.Run(() => _scanner.Scan(new HistoricalReportScanOptions
             {
                 SourceFolder = SourceFolderTextBox.Text.Trim(),
-                IncludeSubfolders = IncludeSubfoldersCheckBox.IsChecked == true
+                IncludeSubfolders = IncludeSubfoldersCheckBox.IsChecked == true,
+                DestinationProjectFolder = _destinationProject.FolderPath,
+                DestinationProjectName = _destinationProject.Name,
+                DestinationProjectNumber = _destinationProject.Number
             }));
 
-            _currentReviewSession = new HistoricalReviewSession(session);
+            _currentReviewSession = _commitEngine.CreateSession(session, _destinationProject);
             RefreshReviewCollection();
         }
         catch (Exception ex)
@@ -148,6 +181,18 @@ public partial class MainWindow : Window
     private void OpenSourceDocumentButton_Click(object sender, RoutedEventArgs e)
         => OpenSourceDocument();
 
+    private void ResultsGrid_CurrentCellChanged(object? sender, EventArgs e)
+    {
+        if (_currentReviewSession is null)
+        {
+            return;
+        }
+
+        _currentReviewSession.RefreshSessionCounts();
+        UpdateSummaryText();
+        UpdateSelectionState();
+    }
+
     private void EditableFieldChanged(object sender, TextChangedEventArgs e)
     {
         if (_isLoadingSelection)
@@ -188,7 +233,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        RefreshReviewCollection(item.SourceFilePath);
+        RefreshSessionState(item.SourceFilePath);
     }
 
     private void ExcludeButton_Click(object sender, RoutedEventArgs e)
@@ -199,7 +244,7 @@ public partial class MainWindow : Window
         }
 
         item.MarkExcluded();
-        RefreshReviewCollection(item.SourceFilePath);
+        RefreshSessionState(item.SourceFilePath);
     }
 
     private void ReturnToReviewButton_Click(object sender, RoutedEventArgs e)
@@ -210,7 +255,7 @@ public partial class MainWindow : Window
         }
 
         item.ReturnToReview();
-        RefreshReviewCollection(item.SourceFilePath);
+        RefreshSessionState(item.SourceFilePath);
     }
 
     private void ResetChangesButton_Click(object sender, RoutedEventArgs e)
@@ -221,7 +266,100 @@ public partial class MainWindow : Window
         }
 
         item.ResetChanges();
-        RefreshReviewCollection(item.SourceFilePath);
+        RefreshSessionState(item.SourceFilePath);
+    }
+
+    private void SelectAllReadyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentReviewSession is null)
+        {
+            return;
+        }
+
+        foreach (var item in _currentReviewSession.Items.Where(item => item.CanSelect))
+        {
+            item.IsSelected = true;
+        }
+
+        _currentReviewSession.RefreshSessionCounts();
+        UpdateSummaryText();
+        UpdateSelectionState();
+    }
+
+    private void ClearSelectionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentReviewSession is null)
+        {
+            return;
+        }
+
+        foreach (var item in _currentReviewSession.Items)
+        {
+            item.IsSelected = false;
+        }
+
+        _currentReviewSession.RefreshSessionCounts();
+        UpdateSummaryText();
+        UpdateSelectionState();
+    }
+
+    private async void ImportSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_destinationProject is null || _currentReviewSession is null)
+        {
+            return;
+        }
+
+        if (_isImporting)
+        {
+            _importCancellationSource?.Cancel();
+            return;
+        }
+
+        CommitWorkingCopyEdits();
+        RefreshSessionState(_selectedReviewItem?.SourceFilePath);
+        if (_currentReviewSession.SelectedCount == 0)
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                "Select one or more Ready reports before importing.",
+                "Nothing Selected",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            _importCancellationSource = new CancellationTokenSource();
+            SetImportingState(true);
+
+            var result = await Task.Run(() =>
+                _commitEngine.ImportSelected(_currentReviewSession, _destinationProject, _importCancellationSource.Token));
+
+            RefreshSessionState(_selectedReviewItem?.SourceFilePath);
+            System.Windows.MessageBox.Show(
+                this,
+                BuildImportSummaryText(result),
+                result.Cancelled ? "Import Cancelled" : "Import Complete",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                ex.Message,
+                "Import Failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _importCancellationSource?.Dispose();
+            _importCancellationSource = null;
+            SetImportingState(false);
+        }
     }
 
     private void RefreshReviewCollection(string? preferredSelectionPath = null)
@@ -353,6 +491,11 @@ public partial class MainWindow : Window
         var previousDisplayDate = item.DisplayDate;
 
         item.UpdateWorkingRequest(updatedRequest);
+        if (_currentReviewSession is not null && _destinationProject is not null)
+        {
+            _commitEngine.RefreshSession(_currentReviewSession, _destinationProject);
+        }
+
         if (previousReviewState != item.ReviewState
             || previousHasUserChanges != item.HasUserChanges
             || previousDisplayReportNumber != item.DisplayReportNumber
@@ -360,6 +503,10 @@ public partial class MainWindow : Window
         {
             UpdateSelectedItemPresentation(item);
         }
+
+        ResultsGrid.Items.Refresh();
+        UpdateSelectionState();
+        UpdateSummaryText();
     }
 
     private void UpdateSelectedItemPresentation(HistoricalReviewItem item)
@@ -370,17 +517,15 @@ public partial class MainWindow : Window
         }
 
         SelectedReportSummaryTextBlock.Text =
-            $"{item.SourceFileName} | State: {item.ReviewStateText} | Confidence: {item.OverallConfidence}";
+            $"{item.SourceFileName} | Review: {item.ReviewStateText} | Import: {item.ImportStatusText} | Confidence: {item.OverallConfidence}";
         UpdateSelectionState();
         UpdateSummaryText();
     }
 
     private void UpdateSummaryText()
-    {
-        SummaryTextBlock.Text = _currentReviewSession is null
+        => SummaryTextBlock.Text = _currentReviewSession is null
             ? "No scan has been run yet."
             : BuildSummaryText(_currentReviewSession);
-    }
 
     private void ClearDetailPane()
     {
@@ -414,11 +559,18 @@ public partial class MainWindow : Window
     {
         var item = ResultsGrid.SelectedItem as HistoricalReviewItem;
         var hasSelection = item is not null;
-        MarkReadyButton.IsEnabled = hasSelection;
-        ExcludeButton.IsEnabled = hasSelection;
-        ResetChangesButton.IsEnabled = hasSelection;
-        ReturnToReviewButton.IsEnabled = item?.ReviewState is HistoricalReviewState.Ready or HistoricalReviewState.Excluded;
-        OpenSourceDocumentButton.IsEnabled = hasSelection;
+        var hasReadySelections = _currentReviewSession?.SelectedCount > 0;
+        ScanButton.IsEnabled = !_isImporting;
+        MarkReadyButton.IsEnabled = hasSelection && !_isImporting;
+        ExcludeButton.IsEnabled = hasSelection && !_isImporting;
+        ResetChangesButton.IsEnabled = hasSelection && !_isImporting;
+        ReturnToReviewButton.IsEnabled = (item?.ReviewState is HistoricalReviewState.Ready or HistoricalReviewState.Excluded) && !_isImporting;
+        OpenSourceDocumentButton.IsEnabled = hasSelection && !_isImporting;
+        SelectAllReadyButton.IsEnabled = _currentReviewSession is not null && !_isImporting;
+        ClearSelectionButton.IsEnabled = _currentReviewSession is not null && !_isImporting;
+        ImportSelectedButton.IsEnabled = (_currentReviewSession is not null && !_isImporting && hasReadySelections)
+                                         || _isImporting;
+        ImportSelectedButton.Content = _isImporting ? "Cancel Import" : "Import Selected";
     }
 
     private void OpenSourceDocument()
@@ -473,7 +625,10 @@ public partial class MainWindow : Window
         };
 
     private static string BuildSummaryText(HistoricalReviewSession session)
-        => $"{session.TotalCount} scanned | {session.UnreviewedCount} unreviewed | {session.NeedsReviewCount} needs review | {session.ReadyCount} ready | {session.ExcludedCount} excluded | {session.ParseFailedCount} failed parse";
+    {
+        session.RefreshSessionCounts();
+        return $"{session.TotalCount} scanned | {session.ReadyCount} ready | {session.SelectedCount} selected | {session.ImportedCount} imported | {session.DuplicateCount} duplicates | {session.ErrorCount} errors | {session.SkippedCount} skipped";
+    }
 
     private static void SetFieldMeta<T>(TextBlock target, FieldExtraction<T> extraction)
     {
@@ -514,4 +669,77 @@ public partial class MainWindow : Window
         yield return NewDiscrepanciesMetaTextBlock;
         yield return PreviousDiscrepanciesMetaTextBlock;
     }
+
+    private void RefreshSessionState(string? preferredSelectionPath = null)
+    {
+        if (_currentReviewSession is null || _destinationProject is null)
+        {
+            return;
+        }
+
+        _commitEngine.RefreshSession(_currentReviewSession, _destinationProject);
+        ResultsGrid.Items.Refresh();
+        if (preferredSelectionPath is not null)
+        {
+            ResultsGrid.SelectedItem = _visibleResults.FirstOrDefault(result => result.SourceFilePath == preferredSelectionPath)
+                ?? ResultsGrid.SelectedItem;
+        }
+
+        LoadSelectedReviewItem();
+        UpdateSelectionState();
+        UpdateSummaryText();
+    }
+
+    private void LoadDestinationProject(string folderPath, bool showErrors)
+    {
+        var project = ProjectStore.Load(folderPath);
+        if (project is null)
+        {
+            _destinationProject = null;
+            DestinationProjectTextBox.Text = string.Empty;
+            DestinationProjectSummaryTextBlock.Text = "Choose an existing SPINgen project.";
+            if (showErrors)
+            {
+                System.Windows.MessageBox.Show(
+                    this,
+                    "Select a valid existing SPINgen project folder.",
+                    "Invalid Project",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
+            UpdateSelectionState();
+            return;
+        }
+
+        _destinationProject = project;
+        var reportCount = ReportStore.LoadAllReports(project).Reports.Count;
+        DestinationProjectTextBox.Text = project.FolderPath;
+        DestinationProjectSummaryTextBlock.Text =
+            $"{project.Name} | Project #{project.Number} | {reportCount} current reports";
+
+        if (_currentReviewSession is not null)
+        {
+            RefreshSessionState(_selectedReviewItem?.SourceFilePath);
+        }
+
+        UpdateSelectionState();
+    }
+
+    private void SetImportingState(bool isImporting)
+    {
+        _isImporting = isImporting;
+        BrowseDestinationProjectButton.IsEnabled = !isImporting;
+        OpenSourceFolderButton.IsEnabled = !isImporting;
+        IncludeSubfoldersCheckBox.IsEnabled = !isImporting;
+        ReviewFilterComboBox.IsEnabled = !isImporting;
+        UpdateSelectionState();
+    }
+
+    private static string BuildImportSummaryText(HistoricalImportBatchResult result)
+        => $"{result.ImportedCount} Imported{Environment.NewLine}"
+           + $"{result.DuplicateCount} Duplicates{Environment.NewLine}"
+           + $"{result.ErrorCount} Errors{Environment.NewLine}"
+           + $"{result.SkippedCount} Skipped{Environment.NewLine}"
+           + $"{result.Elapsed.TotalSeconds:F1}s elapsed";
 }

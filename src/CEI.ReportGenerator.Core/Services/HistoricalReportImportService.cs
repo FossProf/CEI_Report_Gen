@@ -84,6 +84,12 @@ public static class HistoricalReportImportService
         var importedUtc = DateTime.UtcNow;
         var report = BuildImportedReport(request, importedUtc);
         var metadata = BuildMetadata(request, importedUtc);
+        var validationErrors = Validation.ValidateReport(report);
+        if (validationErrors.Count > 0)
+        {
+            throw new InvalidOperationException(string.Join(Environment.NewLine, validationErrors));
+        }
+
         var reportsRoot = ProjectLayout.ReportsFolder(project);
         Directory.CreateDirectory(reportsRoot);
 
@@ -95,6 +101,7 @@ public static class HistoricalReportImportService
         try
         {
             Directory.CreateDirectory(stagingFolder);
+            Directory.CreateDirectory(Path.Combine(stagingFolder, ProjectLayout.PhotosFolderName));
             JsonStore.Save(Path.Combine(stagingFolder, ProjectLayout.ReportJsonFileName), report);
             JsonStore.Save(Path.Combine(stagingFolder, ProjectLayout.ImportMetadataFileName), metadata);
 
@@ -164,8 +171,8 @@ public static class HistoricalReportImportService
             NewDiscrepancies = request.NewDiscrepancies ?? string.Empty,
             PreviousDiscrepancies = request.PreviousDiscrepancies ?? string.Empty,
             Photos = new List<Photo>(),
-            OutputFileName = string.Empty,
-            CreatedUtc = request.SourceCreatedUtc ?? importedUtc
+            OutputFileName = Path.GetFileName(request.SourceDocumentPath),
+            CreatedUtc = importedUtc
         };
 
     private static HistoricalImportMetadata BuildMetadata(HistoricalReportImportRequest request, DateTime importedUtc)

@@ -32,6 +32,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -49,7 +50,19 @@
                 <Button x:Name="OpenSourceDocumentButton" Grid.Row="0" Grid.Column="4" Content="Open Source Document" Padding="12,6" Margin="0,0,10,0" Click="OpenSourceDocumentButton_Click"/>
                 <Button x:Name="ScanButton" Grid.Row="0" Grid.Column="5" Content="Scan" Padding="18,6" Click="ScanButton_Click"/>
 
-                <StackPanel Grid.Row="1" Grid.ColumnSpan="6" Orientation="Horizontal" Margin="0,12,0,0">
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Destination Project:" VerticalAlignment="Center" Margin="0,12,10,0"/>
+                <TextBox x:Name="DestinationProjectTextBox" Grid.Row="1" Grid.Column="1" Margin="0,12,10,0" MinWidth="420" IsReadOnly="True"/>
+                <Button x:Name="BrowseDestinationProjectButton" Grid.Row="1" Grid.Column="2" Content="Browse..." Padding="12,6" Margin="0,12,10,0" Click="BrowseDestinationProjectButton_Click"/>
+                <TextBlock x:Name="DestinationProjectSummaryTextBlock"
+                           Grid.Row="1"
+                           Grid.Column="3"
+                           Grid.ColumnSpan="3"
+                           Margin="0,12,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="DimGray"
+                           Text="Choose an existing SPINgen project."/>
+
+                <StackPanel Grid.Row="2" Grid.ColumnSpan="6" Orientation="Horizontal" Margin="0,12,0,0">
                     <CheckBox x:Name="IncludeSubfoldersCheckBox"
                               Content="Include subfolders"
                               VerticalAlignment="Center"
@@ -64,6 +77,20 @@
                         <ComboBoxItem Content="Ready"/>
                         <ComboBoxItem Content="Excluded"/>
                     </ComboBox>
+                    <Button x:Name="SelectAllReadyButton"
+                            Content="Select All Ready"
+                            Padding="12,6"
+                            Margin="20,0,8,0"
+                            Click="SelectAllReadyButton_Click"/>
+                    <Button x:Name="ClearSelectionButton"
+                            Content="Clear Selection"
+                            Padding="12,6"
+                            Margin="0,0,8,0"
+                            Click="ClearSelectionButton_Click"/>
+                    <Button x:Name="ImportSelectedButton"
+                            Content="Import Selected"
+                            Padding="12,6"
+                            Click="ImportSelectedButton_Click"/>
                     <TextBlock x:Name="SummaryTextBlock"
                                Margin="20,0,0,0"
                                Foreground="DimGray"
@@ -93,19 +120,25 @@
                                Margin="0,0,0,10"/>
                     <DataGrid x:Name="ResultsGrid"
                               AutoGenerateColumns="False"
-                              IsReadOnly="True"
+                              IsReadOnly="False"
                               CanUserAddRows="False"
                               SelectionMode="Single"
                               SelectionChanged="ResultsGrid_SelectionChanged"
+                              CurrentCellChanged="ResultsGrid_CurrentCellChanged"
                               MouseDoubleClick="ResultsGrid_MouseDoubleClick">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Review State" Binding="{Binding ReviewStateText}" Width="120"/>
-                            <DataGridTextColumn Header="Filename" Binding="{Binding SourceFileName}" Width="220"/>
-                            <DataGridTextColumn Header="Report #" Binding="{Binding DisplayReportNumber}" Width="80"/>
-                            <DataGridTextColumn Header="Date" Binding="{Binding DisplayDate}" Width="110"/>
-                            <DataGridTextColumn Header="Confidence" Binding="{Binding OverallConfidence}" Width="90"/>
-                            <DataGridTextColumn Header="Warnings" Binding="{Binding WarningsSummary}" Width="*"/>
-                            <DataGridTextColumn Header="Changed" Binding="{Binding ChangedText}" Width="70"/>
+                            <DataGridCheckBoxColumn Header="Select"
+                                                    Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="60"/>
+                            <DataGridTextColumn Header="Status" Binding="{Binding ImportStatusText}" Width="100" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Date" Binding="{Binding DisplayDate}" Width="110" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Report #" Binding="{Binding DisplayReportNumber}" Width="80" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Project" Binding="{Binding DisplayProject}" Width="150" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Inspector" Binding="{Binding DisplayInspector}" Width="150" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Weather" Binding="{Binding DisplayWeather}" Width="110" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Ready" Binding="{Binding ReadyText}" Width="70" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Filename" Binding="{Binding SourceFileName}" Width="220" IsReadOnly="True"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
@@ -264,6 +297,6 @@
         <TextBlock Grid.Row="3"
                    Margin="0,12,0,0"
                    Foreground="DimGray"
-                   Text="Slice 6C is review-only. It does not write report.json files or import anything into a SPINgen project."/>
+                   Text="Slice 6D imports selected Ready reports into an existing SPINgen project without modifying the source DOCX files."/>
     </Grid>
 </Window>
