@@ -34,7 +34,7 @@ public static class ProjectLayout
         => Path.Combine(project.FolderPath, ReportsFolderName);
 
     public static string ReportFolder(Project project, int reportNumber)
-        => Path.Combine(ReportsFolder(project), FormatReportNumber(reportNumber));
+        => Path.Combine(ReportsFolder(project), FormatStorageReportNumber(reportNumber));
 
     public static string ReportFilePath(Project project, int reportNumber)
         => Path.Combine(ReportFolder(project, reportNumber), ReportJsonFileName);
@@ -81,6 +81,9 @@ public static class ProjectLayout
     }
 
     public static string FormatReportNumber(int reportNumber)
+        => reportNumber.ToString();
+
+    public static string FormatStorageReportNumber(int reportNumber)
         => reportNumber.ToString("D4");
 
     public static bool IsValidProjectFolder(string path)

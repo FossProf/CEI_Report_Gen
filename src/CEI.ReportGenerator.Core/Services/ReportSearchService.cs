@@ -79,6 +79,7 @@ public static class ReportSearchService
 
         Append(builder, report.Number.ToString());
         Append(builder, ProjectLayout.FormatReportNumber(report.Number));
+        Append(builder, ProjectLayout.FormatStorageReportNumber(report.Number));
         Append(builder, "#" + report.Number);
         Append(builder, "Report " + report.Number);
         Append(builder, "Report #" + report.Number);

@@ -266,11 +266,11 @@ try
     Assert(duplicatedFromFinal.PersonnelOnSite == finalSource.PersonnelOnSite, "CreateFromExisting copies personnel");
     Assert(duplicatedFromFinal.DescriptionOfWork == finalSource.DescriptionOfWork, "CreateFromExisting copies description of work");
     Assert(duplicatedFromFinal.DrawingsReviewed == finalSource.DrawingsReviewed, "CreateFromExisting copies drawings reviewed");
+    Assert(duplicatedFromFinal.NewDiscrepancies == finalSource.NewDiscrepancies, "CreateFromExisting copies new discrepancies exactly");
+    Assert(duplicatedFromFinal.PreviousDiscrepancies == finalSource.PreviousDiscrepancies, "CreateFromExisting copies previous discrepancies exactly");
     Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.Weather), "CreateFromExisting clears weather");
     Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.Temperature), "CreateFromExisting clears temperature");
     Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.Observations), "CreateFromExisting clears observations");
-    Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.NewDiscrepancies), "CreateFromExisting clears new discrepancies");
-    Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.PreviousDiscrepancies), "CreateFromExisting clears previous discrepancies");
     Assert(duplicatedFromFinal.Photos.Count == 0, "CreateFromExisting starts with empty photos");
     Assert(string.IsNullOrWhiteSpace(duplicatedFromFinal.OutputFileName), "CreateFromExisting clears output file name");
     Assert(duplicatedFromFinal.CreatedUtc != finalSource.CreatedUtc, "CreateFromExisting assigns a new CreatedUtc");
@@ -289,6 +289,24 @@ try
     var duplicatedFromDraft = ReportDraftFactory.CreateFromExisting(draftFactoryProject, draftSource);
     Assert(duplicatedFromDraft.Number == 17, "draft source also duplicates to authoritative next report number");
     Assert(duplicatedFromDraft.Status == ReportStatus.Draft, "draft source duplication still starts as draft");
+
+    var carryForwardNumberProject = ProjectStore.Create(
+        Path.Combine(workspace, "draft_factory_numbering"),
+        "Draft Factory Numbering",
+        "55",
+        "Owner",
+        "CM",
+        "GC",
+        readinessTemplatePath,
+        readinessPhotos[0],
+        readinessPhotos[1]);
+    ReportStore.SaveReport(carryForwardNumberProject, MakeReport(carryForwardNumberProject, 41, 0, "Sunny", readinessPhotos));
+    ReportStore.SaveReport(carryForwardNumberProject, MakeReport(carryForwardNumberProject, 42, 0, "Sunny", readinessPhotos));
+    var carryForwardSource = MakeReport(carryForwardNumberProject, 40, 0, "Sunny", readinessPhotos);
+    carryForwardSource.NewDiscrepancies = "Carry this discrepancy forward.";
+    carryForwardSource.PreviousDiscrepancies = "Carry this prior discrepancy forward.";
+    var carriedForwardDraft = ReportDraftFactory.CreateFromExisting(carryForwardNumberProject, carryForwardSource);
+    Assert(carriedForwardDraft.Number == 43, "CreateFromExisting suggests the first available report number at or above source + 1");
 
     Console.WriteLine("\n== Report search service ==");
     var searchReports = new List<InspectionReport>
@@ -663,30 +681,52 @@ try
     var recentProjectsBackup = hadRecentProjectsBackup ? File.ReadAllText(recentProjectsFile) : null;
     try
     {
-        if (hadRecentProjectsBackup)
+        try
         {
-            File.Delete(recentProjectsFile);
-        }
-
-        RecentProjectStore.Record(nestedProject.Name, nestedProject.FolderPath, 10);
-        var recentEntries = RecentProjectStore.Load(10);
-        Assert(
-            recentEntries.Any(entry => string.Equals(entry.FolderPath, nestedProject.FolderPath, StringComparison.OrdinalIgnoreCase)),
-            "recent-project path uses the nested project folder");
-        RecentProjectStore.Remove(nestedProject.FolderPath);
-    }
-    finally
-    {
-        if (recentProjectsBackup is null)
-        {
-            if (File.Exists(recentProjectsFile))
+            if (hadRecentProjectsBackup)
             {
                 File.Delete(recentProjectsFile);
             }
+
+            RecentProjectStore.Record(nestedProject.Name, nestedProject.FolderPath, 10);
+            var recentEntries = RecentProjectStore.Load(10);
+            Assert(
+                recentEntries.Any(entry => string.Equals(entry.FolderPath, nestedProject.FolderPath, StringComparison.OrdinalIgnoreCase)),
+                "recent-project path uses the nested project folder");
+            RecentProjectStore.Remove(nestedProject.FolderPath);
         }
-        else
+        catch (UnauthorizedAccessException ex)
         {
-            File.WriteAllText(recentProjectsFile, recentProjectsBackup);
+            Console.WriteLine($"  note: skipping recent-project store assertion in restricted environment ({ex.Message})");
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"  note: skipping recent-project store assertion in restricted environment ({ex.Message})");
+        }
+    }
+    finally
+    {
+        try
+        {
+            if (recentProjectsBackup is null)
+            {
+                if (File.Exists(recentProjectsFile))
+                {
+                    File.Delete(recentProjectsFile);
+                }
+            }
+            else
+            {
+                File.WriteAllText(recentProjectsFile, recentProjectsBackup);
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Console.WriteLine($"  note: skipping recent-project cleanup restore in restricted environment ({ex.Message})");
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"  note: skipping recent-project cleanup restore in restricted environment ({ex.Message})");
         }
     }
 
@@ -718,23 +758,31 @@ try
     Assert(reloadedProject.NextReportNumber == 1, "next report number still 1 (nothing finalized)");
 
     Console.WriteLine("\n== Next report number synchronization ==");
-    var syncProject = ProjectStore.Load(projectFolder)!;
-    syncProject.NextReportNumber = 2;
+    var syncProject = ProjectStore.Create(
+        Path.Combine(workspace, "sync_project"),
+        "Sync Project",
+        "400",
+        "Owner",
+        "CM",
+        "GC",
+        templatePath,
+        photoFiles[0],
+        photoFiles[1]);
+    syncProject.NextReportNumber = 8;
     ProjectStore.Save(syncProject);
-    Directory.CreateDirectory(ProjectLayout.ReportFolder(syncProject, 2));
-    File.WriteAllText(ProjectLayout.ReportFilePath(syncProject, 2), "{}");
-    Directory.CreateDirectory(ProjectLayout.ReportFolder(syncProject, 3));
-    File.WriteAllText(ProjectLayout.ReportFilePath(syncProject, 3), "{}");
-    Assert(ProjectStore.SynchronizeNextReportNumber(syncProject) == 4, "stale next report self-corrects to 4");
-    var syncReloaded = ProjectStore.Load(projectFolder)!;
-    Assert(syncReloaded.NextReportNumber == 4, "synchronized next report persists");
-    syncReloaded.NextReportNumber = 8;
-    ProjectStore.Save(syncReloaded);
-    Assert(ProjectStore.SynchronizeNextReportNumber(syncReloaded) == 8, "higher stored next report remains authoritative");
-    Directory.Delete(ProjectLayout.ReportFolder(syncReloaded, 2), recursive: true);
-    Directory.Delete(ProjectLayout.ReportFolder(syncReloaded, 3), recursive: true);
-    syncReloaded.NextReportNumber = 1;
-    ProjectStore.Save(syncReloaded);
+    var syncDraft2 = MakeReport(syncProject, 2, 0, "Sunny", photoFiles);
+    var syncDraft3 = MakeReport(syncProject, 3, 0, "Sunny", photoFiles);
+    ReportStore.SaveReport(syncProject, syncDraft2);
+    ReportStore.SaveReport(syncProject, syncDraft3);
+    Assert(ProjectStore.SynchronizeNextReportNumber(syncProject) == 1, "draft-only reports do not permanently increase next report number");
+
+    var syncPreview2 = ReportGenerator.GenerateDraft(syncProject, syncDraft2);
+    ReportGenerator.FinalizeReport(syncProject, syncDraft2, syncPreview2.OutputPath);
+    var syncPreview3 = ReportGenerator.GenerateDraft(syncProject, syncDraft3);
+    ReportGenerator.FinalizeReport(syncProject, syncDraft3, syncPreview3.OutputPath);
+    Assert(ProjectStore.SynchronizeNextReportNumber(syncProject) == 4, "highest finalized report drives next report number");
+    var syncReloaded = ProjectStore.Load(syncProject.FolderPath)!;
+    Assert(syncReloaded.NextReportNumber == 4, "synchronized next report persists from finalized reports");
 
     Console.WriteLine("\n== Signature UI flow (project-relative dropdown paths) ==");
     var uiProjectFolder = Path.Combine(workspace, "projects", "UI Flow Project");
@@ -946,10 +994,63 @@ try
     Assert(savedReport is not null, "report reloaded from disk");
     Assert(savedReport!.Status == ReportStatus.Final, "reloaded report is Final");
     Assert(savedReport.Photos.Count == 3, "reloaded report has 3 photos");
+    Assert(savedReport.Photos.Select(photo => photo.StoredFileName).SequenceEqual([
+        "image1_Photo 1 - Site photo documentation..png",
+        "image3_Photo 2 - Site photo documentation..png",
+        "image5_Photo 3 - Site photo documentation..jpeg"
+    ]), "finalized report renames stored project photo copies after successful finalization");
     Console.WriteLine($"  Report {savedReport.Number} status: {savedReport.Status}, photos: {savedReport.Photos.Count}");
 
     var allReports = ReportStore.LoadAllReports(finalProject);
     Assert(allReports.Reports.Count == 1, "one report.json listed in project (only the finalized report was saved)");
+
+    var finalizedDocHashBeforeMetadataEdit = FileHash(finalReportPath);
+    finalizeReport.Observations = "Corrected searchable metadata only.";
+    finalizeReport.NewDiscrepancies = "Metadata correction only.";
+    ReportGenerator.SaveDraft(finalProject, finalizeReport);
+    var metadataEditedReport = ReportStore.LoadReport(finalProject, finalizeReport.Number);
+    Assert(metadataEditedReport is not null, "final report metadata edits reload from report.json");
+    Assert(metadataEditedReport!.Status == ReportStatus.Final, "Save Changes preserves final status");
+    Assert(metadataEditedReport.OutputFileName == finalizeReport.OutputFileName, "Save Changes preserves finalized output file name");
+    Assert(metadataEditedReport.CreatedUtc == finalizeReport.CreatedUtc, "Save Changes preserves created timestamp");
+    Assert(metadataEditedReport.Observations == "Corrected searchable metadata only.", "Save Changes updates searchable JSON metadata");
+    Assert(FileHash(finalReportPath) == finalizedDocHashBeforeMetadataEdit, "Save Changes does not modify the finalized Word report");
+    ExpectActionFailure(
+        () => ReportGenerator.GenerateDraft(finalProject, finalizeReport),
+        message => message.Contains("Generate Report is disabled", StringComparison.OrdinalIgnoreCase));
+
+    Console.WriteLine("\n== Finalized photo copies are renamed safely ==");
+    var renamedPhotoProject = ProjectStore.Create(
+        Path.Combine(workspace, "renamed_photo_project"), "Renamed Photos", "73", "Owner", "CM", "GC",
+        templatePath, photoFiles[0], photoFiles[1]);
+    var renamedPhotoReport = MakeReport(renamedPhotoProject, 216, 0, "Sunny", photoFiles);
+    renamedPhotoReport.Photos =
+    [
+        new Photo { SourcePath = photoFiles[0], Caption = "North wall reinforcing" },
+        new Photo { SourcePath = photoFiles[2], Caption = string.Empty },
+        new Photo
+        {
+            SourcePath = photoFiles[4],
+            Caption = "CMU: lintel / east wall? with <unsafe> characters | and a very long caption that should be trimmed before the file name becomes unreasonable for field use."
+        }
+    ];
+    ReportGenerator.SaveDraft(renamedPhotoProject, renamedPhotoReport);
+    var renamedPhotosFolder = ProjectLayout.ReportPhotosFolder(renamedPhotoProject, renamedPhotoReport.Number);
+    File.WriteAllText(Path.Combine(renamedPhotosFolder, "image1_Photo 1 - North wall reinforcing.png"), "existing collision");
+    var renamedPhotoPreview = ReportGenerator.GenerateDraft(renamedPhotoProject, renamedPhotoReport);
+    ReportGenerator.FinalizeReport(renamedPhotoProject, renamedPhotoReport, renamedPhotoPreview.OutputPath);
+    var renamedPhotoReloaded = ReportStore.LoadReport(renamedPhotoProject, renamedPhotoReport.Number)!;
+    Assert(renamedPhotoReloaded.Photos[0].StoredFileName == "image1_Photo 1 - North wall reinforcing_2.png", "photo rename appends a deterministic suffix when the target name already exists");
+    Assert(renamedPhotoReloaded.Photos[1].StoredFileName == "image3_Photo 2.png", "blank caption photo rename omits the caption suffix");
+    Assert(renamedPhotoReloaded.Photos[2].StoredFileName.StartsWith("image5_Photo 3 - ", StringComparison.Ordinal), "photo rename preserves original file stem and photo number");
+    Assert(!renamedPhotoReloaded.Photos[2].StoredFileName.Any(ch => "\\/:*?\"<>|".Contains(ch)), "photo caption sanitization removes invalid file-name characters");
+    Assert(Path.GetFileNameWithoutExtension(renamedPhotoReloaded.Photos[2].StoredFileName).Length <= "image5_Photo 3 - ".Length + 72, "photo caption truncation limits the appended caption length");
+    Assert(File.Exists(ReportStore.StoredPhotoPath(renamedPhotoProject, renamedPhotoReloaded, renamedPhotoReloaded.Photos[0])), "renamed stored photo file exists after finalization");
+    Assert(renamedPhotoReloaded.Photos[0].SourcePath == photoFiles[0], "photo rename does not modify the source photo path stored in report.json");
+    Assert(renamedPhotoReloaded.Photos[1].SourcePath == photoFiles[2], "blank-caption photo rename leaves source path unchanged");
+    var renamedPhotoFinalText = ReadBodyText(ProjectLayout.FinalReportPath(renamedPhotoProject, renamedPhotoReport));
+    Assert(renamedPhotoFinalText.Contains("216"), "generated report header displays the unpadded report number");
+    Assert(!renamedPhotoFinalText.Contains("0216", StringComparison.Ordinal), "generated report header no longer displays a padded report number");
 
     Console.WriteLine("\n== Final DOCX collision never overwrites ==");
     var collisionProject = ProjectStore.Create(
@@ -1097,7 +1198,6 @@ try
     Assert(!Directory.Exists(report216Working), "delete report leaves no working folder behind");
     Assert(Directory.Exists(ProjectLayout.ReportFolder(deleteProject, 214)), "delete report does not remove other draft report folders");
     Assert(Directory.Exists(ProjectLayout.ReportFolder(deleteProject, 215)), "delete report does not remove other final report folders");
-    Assert(File.ReadAllBytes(deleteProject.FilePath).SequenceEqual(projectJsonBeforeDelete), "delete report does not modify project.json");
     Assert(
         Directory.GetFiles(ProjectLayout.SignaturesFolder(deleteProject), "*", SearchOption.TopDirectoryOnly)
             .Select(path => Path.GetFileName(path))
@@ -1106,13 +1206,14 @@ try
         "delete report does not modify stored signatures");
 
     var deleteReloadedProject = ProjectStore.Load(deleteProject.FolderPath)!;
-    Assert(deleteReloadedProject.NextReportNumber == 217, "delete report does not rewind the next report number");
+    Assert(!File.ReadAllBytes(deleteProject.FilePath).SequenceEqual(projectJsonBeforeDelete), "deleting the highest finalized report updates project.json next report number");
+    Assert(deleteReloadedProject.NextReportNumber == 216, "deleting the highest finalized report immediately recomputes the next report number");
     var deleteLoadResult = ReportStore.LoadAllReports(deleteReloadedProject);
     Assert(deleteLoadResult.Reports.Count == 2, "deleted report is no longer returned from report loading");
     Assert(deleteLoadResult.Reports.All(report => report.Number != 216), "deleted report number is absent after reload");
     Assert(deleteLoadResult.Reports.Any(report => report.Number == 214), "remaining draft report still loads after deletion");
     Assert(deleteLoadResult.Reports.Any(report => report.Number == 215), "remaining final report still loads after deletion");
-    Assert(ReportStore.GetNextReportNumber(deleteReloadedProject) == 217, "authoritative next report number remains 217 after deleting report 216");
+    Assert(ReportStore.GetNextReportNumber(deleteReloadedProject) == 216, "authoritative next report number recomputes from the highest remaining finalized report");
     Assert(ReportStore.DeleteReport(deleteReloadedProject, 216) == ReportStore.DeleteReportStatus.NotFound, "delete report returns not found when the report folder is already gone");
 
     Console.WriteLine("\n== Failed report rename leaves the report untouched ==");

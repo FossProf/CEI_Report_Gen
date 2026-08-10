@@ -6,9 +6,10 @@ public static class ReportDraftFactory
 {
     public static InspectionReport CreateBlank(Project project)
     {
+        var nextAuthoritativeNumber = ProjectStore.SynchronizeNextReportNumber(project);
         return new InspectionReport
         {
-            Number = ProjectStore.SynchronizeNextReportNumber(project),
+            Number = ReportStore.GetFirstAvailableReportNumber(project, nextAuthoritativeNumber),
             Status = ReportStatus.Draft,
             Date = DateTime.Today,
             CreatedUtc = DateTime.UtcNow,
@@ -19,9 +20,10 @@ public static class ReportDraftFactory
 
     public static InspectionReport CreateFromExisting(Project project, InspectionReport source)
     {
+        var suggestedNumber = ReportStore.GetFirstAvailableReportNumber(project, Math.Max(1, source.Number + 1));
         return new InspectionReport
         {
-            Number = ProjectStore.SynchronizeNextReportNumber(project),
+            Number = suggestedNumber,
             Status = ReportStatus.Draft,
             Date = DateTime.Today,
             CreatedUtc = DateTime.UtcNow,
@@ -30,6 +32,8 @@ public static class ReportDraftFactory
             PersonnelOnSite = source.PersonnelOnSite,
             DescriptionOfWork = source.DescriptionOfWork,
             DrawingsReviewed = source.DrawingsReviewed,
+            NewDiscrepancies = source.NewDiscrepancies,
+            PreviousDiscrepancies = source.PreviousDiscrepancies,
             Photos = new List<Photo>(),
             OutputFileName = string.Empty
         };

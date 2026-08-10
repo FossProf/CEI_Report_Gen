@@ -8,6 +8,11 @@ public static class ReportGenerator
 
     public static GenerationResult GenerateDraft(Project project, InspectionReport report)
     {
+        if (report.Status == ReportStatus.Final)
+        {
+            throw new InvalidOperationException("Final reports can only update SPINgen metadata. Generate Report is disabled for finalized reports.");
+        }
+
         ReportStore.CleanupPreviewArtifacts(project, report.Number, removePreview: false);
 
         var errors = Validation.ValidateProject(project);
@@ -70,6 +75,7 @@ public static class ReportGenerator
         var previousProjectJsonPath = project.FilePath;
         var previousReportJson = File.Exists(previousReportJsonPath) ? File.ReadAllBytes(previousReportJsonPath) : null;
         var previousProjectJson = File.Exists(previousProjectJsonPath) ? File.ReadAllBytes(previousProjectJsonPath) : null;
+        var previousStoredPhotoFileNames = savedReport.Photos.Select(photo => photo.StoredFileName).ToList();
         var stagedFinalPath = ProjectLayout.FinalizingReportPath(project, report);
         var rollbackFailures = new List<string>();
         var reportPersisted = false;
@@ -89,6 +95,10 @@ public static class ReportGenerator
             ReportStore.SaveReport(project, savedReport);
             reportPersisted = true;
 
+            ReportStore.RenameStoredPhotosForFinalization(project, savedReport);
+            MaybeFail(previousReportJsonPath);
+            ReportStore.SaveReport(project, savedReport);
+
             MaybeFail(previousProjectJsonPath);
             ProjectStore.AdvanceReportNumber(project, report.Number);
             projectPersisted = true;
@@ -100,6 +110,7 @@ public static class ReportGenerator
         catch (Exception ex)
         {
             TryDeleteFile(stagedFinalPath, rollbackFailures);
+            TryRestoreStoredPhotos(project, savedReport, previousStoredPhotoFileNames, rollbackFailures);
 
             if (projectPersisted)
             {
@@ -199,6 +210,22 @@ public static class ReportGenerator
         catch (Exception ex)
         {
             rollbackFailures.Add($"{path}: {ex.Message}");
+        }
+    }
+
+    private static void TryRestoreStoredPhotos(
+        Project project,
+        InspectionReport report,
+        IReadOnlyList<string> previousStoredPhotoFileNames,
+        List<string> rollbackFailures)
+    {
+        try
+        {
+            ReportStore.RestoreStoredPhotosAfterFailedFinalization(project, report, previousStoredPhotoFileNames);
+        }
+        catch (Exception ex)
+        {
+            rollbackFailures.Add($"stored photos: {ex.Message}");
         }
     }
 

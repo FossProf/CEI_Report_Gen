@@ -203,9 +203,7 @@ public static class ProjectStore
 
     public static void AdvanceReportNumber(Project project, int finalizedReportNumber)
     {
-        project.NextReportNumber = Math.Max(
-            Math.Max(project.NextReportNumber, ReportStore.GetNextReportNumber(project)),
-            finalizedReportNumber + 1);
+        project.NextReportNumber = ReportStore.GetNextReportNumber(project);
         Save(project);
     }
 

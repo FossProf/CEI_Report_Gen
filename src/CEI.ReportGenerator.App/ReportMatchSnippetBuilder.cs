@@ -67,6 +67,7 @@ public static class ReportMatchSnippetBuilder
             " ",
             reportNumber.ToString(),
             ProjectLayout.FormatReportNumber(reportNumber),
+            ProjectLayout.FormatStorageReportNumber(reportNumber),
             "#" + reportNumber,
             "Report " + reportNumber,
             "Report #" + reportNumber);

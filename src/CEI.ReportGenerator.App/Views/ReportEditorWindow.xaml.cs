@@ -17,14 +17,21 @@ public partial class ReportEditorWindow : Window
 {
     private readonly Project _project;
     private readonly InspectionReport _report;
+    private readonly bool _isFinalReport;
 
     public ReportEditorWindow(Project project, InspectionReport report, bool isNew)
     {
         InitializeComponent();
         _project = project;
         _report = report;
+        _isFinalReport = report.Status == ReportStatus.Final;
 
-        ReportNumberText.Text = isNew ? "New report" : $"Report {ProjectLayout.FormatReportNumber(report.Number)}";
+        ReportNumberText.Text = isNew
+            ? "New report"
+            : _isFinalReport
+                ? $"Report {ProjectLayout.FormatReportNumber(report.Number)} (Final)"
+                : $"Report {ProjectLayout.FormatReportNumber(report.Number)}";
+        Title = _isFinalReport ? "Inspection Report (Final)" : "Inspection Report";
         ReportNumberBox.Text = report.Number.ToString();
         ReportNumberBox.IsEnabled = isNew;
 
@@ -58,13 +65,8 @@ public partial class ReportEditorWindow : Window
 
         UpdatePhotoNumbers();
         UpdatePhotoButtons();
-
-        if (report.Status == ReportStatus.Final)
-        {
-            SaveDraftButton.IsEnabled = false;
-            GenerateButton.IsEnabled = false;
-            ReportNumberBox.IsEnabled = false;
-        }
+        UpdatePhotoEmptyState();
+        ApplyLifecyclePresentation();
     }
 
     private static readonly string[] PhotoExtensions = { ".png", ".jpg", ".jpeg", ".gif", ".bmp" };
@@ -108,6 +110,7 @@ public partial class ReportEditorWindow : Window
 
         UpdatePhotoNumbers();
         UpdatePhotoButtons();
+        UpdatePhotoEmptyState();
     }
 
     private void RemovePhotoButton_Click(object sender, RoutedEventArgs e)
@@ -121,6 +124,7 @@ public partial class ReportEditorWindow : Window
         PhotoList.Items.Remove(item);
         UpdatePhotoNumbers();
         UpdatePhotoButtons();
+        UpdatePhotoEmptyState();
     }
 
     private void MoveUpPhotoButton_Click(object sender, RoutedEventArgs e)
@@ -142,6 +146,7 @@ public partial class ReportEditorWindow : Window
     private void PhotoList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdatePhotoButtons();
+        UpdatePhotoEmptyState();
     }
 
     private void PhotoList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -245,6 +250,7 @@ public partial class ReportEditorWindow : Window
         PhotoList.SelectedItem = item;
         UpdatePhotoNumbers();
         UpdatePhotoButtons();
+        UpdatePhotoEmptyState();
     }
 
     private void UpdatePhotoNumbers()
@@ -266,6 +272,30 @@ public partial class ReportEditorWindow : Window
         MoveDownPhotoButton.IsEnabled = hasSelection
             && PhotoList.SelectedIndex >= 0
             && PhotoList.SelectedIndex < PhotoList.Items.Count - 1;
+    }
+
+    private void UpdatePhotoEmptyState()
+    {
+        PhotoEmptyState.Visibility = PhotoList.Items.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void ApplyLifecyclePresentation()
+    {
+        if (!_isFinalReport)
+        {
+            FinalMetadataNoteText.Visibility = Visibility.Collapsed;
+            SaveDraftButton.Content = "Save Draft";
+            GenerateButton.IsEnabled = true;
+            return;
+        }
+
+        SaveDraftButton.Content = "Save Changes";
+        SaveDraftButton.IsEnabled = true;
+        GenerateButton.IsEnabled = false;
+        ReportNumberBox.IsEnabled = false;
+        FinalMetadataNoteText.Visibility = Visibility.Visible;
     }
 
     private static T? FindVisualAncestor<T>(DependencyObject current) where T : DependencyObject
@@ -295,9 +325,12 @@ public partial class ReportEditorWindow : Window
         try
         {
             ReportGeneratorService.SaveDraft(_project, _report);
-            MessageBox.Show(this,
-                $"Draft saved to:\n{ProjectLayout.ReportFilePath(_project, _report.Number)}",
-                "Draft Saved",
+            MessageBox.Show(
+                this,
+                _isFinalReport
+                    ? $"Metadata changes saved to:{Environment.NewLine}{ProjectLayout.ReportFilePath(_project, _report.Number)}"
+                    : $"Draft saved to:{Environment.NewLine}{ProjectLayout.ReportFilePath(_project, _report.Number)}",
+                _isFinalReport ? "Changes Saved" : "Draft Saved",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         }
@@ -345,7 +378,8 @@ public partial class ReportEditorWindow : Window
             try
             {
                 ReportGeneratorService.FinalizeReport(_project, _report, result.OutputPath);
-                MessageBox.Show(this,
+                MessageBox.Show(
+                    this,
                     $"Report {ProjectLayout.FormatReportNumber(_report.Number)} has been finalized and saved.",
                     "Report Final",
                     MessageBoxButton.OK,
@@ -406,7 +440,7 @@ public partial class ReportEditorWindow : Window
             return;
         }
 
-        ErrorText.Text = string.Join(Environment.NewLine, errors.Select(e => "• " + e));
+        ErrorText.Text = string.Join(Environment.NewLine, errors.Select(e => "* " + e));
         ErrorText.Visibility = Visibility.Visible;
     }
 

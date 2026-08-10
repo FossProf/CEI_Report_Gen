@@ -4,6 +4,8 @@ namespace CEI.ReportGenerator.Core.Services;
 
 public static class ReportStore
 {
+    private const int FinalPhotoCaptionMaxLength = 72;
+
     public enum DeleteReportStatus
     {
         Deleted,
@@ -162,8 +164,21 @@ public static class ReportStore
     public static int GetNextReportNumber(Project project)
     {
         CleanupAbandonedDeleteFolders(project);
-        var highest = GetOccupiedReportNumbers(project).DefaultIfEmpty(0).Max();
-        return Math.Max(project.NextReportNumber, highest + 1);
+        var highest = GetHighestFinalReportNumber(project);
+        return Math.Max(1, highest + 1);
+    }
+
+    public static int GetFirstAvailableReportNumber(Project project, int minimumNumber)
+    {
+        CleanupAbandonedDeleteFolders(project);
+        var occupiedNumbers = GetOccupiedReportNumbers(project).ToHashSet();
+        var candidate = Math.Max(1, minimumNumber);
+        while (occupiedNumbers.Contains(candidate))
+        {
+            candidate++;
+        }
+
+        return candidate;
     }
 
     public static int SynchronizeNextReportNumber(Project project)
@@ -298,7 +313,123 @@ public static class ReportStore
         }
 
         Directory.Delete(deletingFolder, recursive: true);
+        ProjectStore.RefreshNextReportNumber(project);
         return DeleteReportStatus.Deleted;
+    }
+
+    public static void RenameStoredPhotosForFinalization(Project project, InspectionReport report)
+    {
+        var photosFolder = ProjectLayout.ReportPhotosFolder(project, report.Number);
+        if (!Directory.Exists(photosFolder) || report.Photos.Count == 0)
+        {
+            return;
+        }
+
+        var plans = new List<PhotoRenamePlan>();
+        var reservedNames = Directory.EnumerateFiles(photosFolder)
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < report.Photos.Count; i++)
+        {
+            var photo = report.Photos[i];
+            if (string.IsNullOrWhiteSpace(photo.StoredFileName))
+            {
+                continue;
+            }
+
+            var currentFileName = ValidateStoredFileName(photo.StoredFileName);
+            var currentPath = Path.Combine(photosFolder, currentFileName);
+            EnsureWithinFolder(photosFolder, currentPath);
+            if (!File.Exists(currentPath))
+            {
+                continue;
+            }
+
+            reservedNames.Remove(currentFileName);
+            var targetFileName = BuildFinalizedPhotoFileName(photo, i + 1, reservedNames);
+            reservedNames.Add(targetFileName);
+            plans.Add(new PhotoRenamePlan(photo, currentPath, currentFileName, targetFileName));
+        }
+
+        if (plans.Count == 0)
+        {
+            return;
+        }
+
+        ExecuteTwoPhasePhotoRename(photosFolder, plans, rollbackOnFailure: true);
+        foreach (var plan in plans)
+        {
+            plan.Photo.StoredFileName = plan.TargetFileName;
+        }
+    }
+
+    public static void RestoreStoredPhotosAfterFailedFinalization(
+        Project project,
+        InspectionReport report,
+        IReadOnlyList<string> originalStoredFileNames)
+    {
+        var photosFolder = ProjectLayout.ReportPhotosFolder(project, report.Number);
+        if (!Directory.Exists(photosFolder) || report.Photos.Count == 0 || report.Photos.Count != originalStoredFileNames.Count)
+        {
+            return;
+        }
+
+        var plans = new List<PhotoRenamePlan>();
+        for (var i = 0; i < report.Photos.Count; i++)
+        {
+            var photo = report.Photos[i];
+            var originalStoredFileName = originalStoredFileNames[i];
+            if (string.IsNullOrWhiteSpace(photo.StoredFileName) || string.IsNullOrWhiteSpace(originalStoredFileName))
+            {
+                continue;
+            }
+
+            var currentFileName = ValidateStoredFileName(photo.StoredFileName);
+            var currentPath = Path.Combine(photosFolder, currentFileName);
+            var targetFileName = ValidateStoredFileName(originalStoredFileName);
+            var targetPath = Path.Combine(photosFolder, targetFileName);
+            EnsureWithinFolder(photosFolder, currentPath);
+            EnsureWithinFolder(photosFolder, targetPath);
+            if (!File.Exists(currentPath))
+            {
+                photo.StoredFileName = targetFileName;
+                continue;
+            }
+
+            plans.Add(new PhotoRenamePlan(photo, currentPath, currentFileName, targetFileName));
+        }
+
+        foreach (var group in plans.GroupBy(plan => plan.TargetFileName, StringComparer.OrdinalIgnoreCase))
+        {
+            var targetFileName = group.Key;
+            var targetPath = Path.Combine(photosFolder, targetFileName);
+            EnsureWithinFolder(photosFolder, targetPath);
+
+            var sourcePlan = group.FirstOrDefault(plan => File.Exists(plan.CurrentPath));
+            if (sourcePlan is not null
+                && !string.Equals(sourcePlan.CurrentFileName, targetFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                if (File.Exists(targetPath))
+                {
+                    File.Delete(targetPath);
+                }
+
+                File.Move(sourcePlan.CurrentPath, targetPath, overwrite: false);
+            }
+
+            foreach (var plan in group)
+            {
+                if (File.Exists(plan.CurrentPath)
+                    && !string.Equals(plan.CurrentFileName, targetFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(plan.CurrentPath);
+                }
+
+                plan.Photo.StoredFileName = targetFileName;
+            }
+        }
     }
 
     public static string StoredPhotoPath(Project project, InspectionReport report, Photo photo)
@@ -422,5 +553,226 @@ public static class ReportStore
         {
             File.Delete(file);
         }
+    }
+
+    private static int GetHighestFinalReportNumber(Project project)
+    {
+        var reportsFolder = ProjectLayout.ReportsFolder(project);
+        if (!Directory.Exists(reportsFolder))
+        {
+            return 0;
+        }
+
+        var highest = 0;
+        foreach (var directory in Directory.EnumerateDirectories(reportsFolder))
+        {
+            if (!int.TryParse(Path.GetFileName(directory), out var number))
+            {
+                continue;
+            }
+
+            if (IsFinalizedReportFolder(directory))
+            {
+                highest = Math.Max(highest, number);
+            }
+        }
+
+        return highest;
+    }
+
+    private static bool IsFinalizedReportFolder(string reportFolder)
+    {
+        var reportJson = Path.Combine(reportFolder, ProjectLayout.ReportJsonFileName);
+        if (File.Exists(reportJson))
+        {
+            if (JsonStore.TryLoad<InspectionReport>(reportJson, out var report, out _)
+                && report?.Status == ReportStatus.Final)
+            {
+                return true;
+            }
+        }
+
+        return Directory.EnumerateFiles(reportFolder, "*.docx", SearchOption.TopDirectoryOnly)
+            .Any(path =>
+            {
+                var fileName = Path.GetFileName(path);
+                return !fileName.StartsWith(".", StringComparison.Ordinal)
+                    && !string.Equals(fileName, ProjectLayout.PreviewFileName, StringComparison.OrdinalIgnoreCase);
+            });
+    }
+
+    private static string BuildFinalizedPhotoFileName(Photo photo, int photoNumber, IReadOnlySet<string> reservedNames)
+    {
+        var sourceFileName = !string.IsNullOrWhiteSpace(photo.SourcePath)
+            ? Path.GetFileName(photo.SourcePath)
+            : photo.StoredFileName;
+        var extension = Path.GetExtension(sourceFileName);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            extension = Path.GetExtension(photo.StoredFileName);
+        }
+
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            extension = ".jpg";
+        }
+
+        var originalStem = Path.GetFileNameWithoutExtension(sourceFileName);
+        if (string.IsNullOrWhiteSpace(originalStem))
+        {
+            originalStem = "Photo";
+        }
+
+        var sanitizedCaption = SanitizeCaptionForFileName(photo.Caption);
+        var baseName = string.IsNullOrWhiteSpace(sanitizedCaption)
+            ? $"{originalStem}_Photo {photoNumber}"
+            : $"{originalStem}_Photo {photoNumber} - {sanitizedCaption}";
+        var candidate = $"{baseName}{extension}";
+        var suffix = 2;
+        while (reservedNames.Contains(candidate))
+        {
+            candidate = $"{baseName}_{suffix++}{extension}";
+        }
+
+        return candidate;
+    }
+
+    private static string SanitizeCaptionForFileName(string caption)
+    {
+        if (string.IsNullOrWhiteSpace(caption))
+        {
+            return string.Empty;
+        }
+
+        var invalidCharacters = new HashSet<char>(['\\', '/', ':', '*', '?', '"', '<', '>', '|']);
+        var replaced = new string(caption
+            .Select(character => invalidCharacters.Contains(character) ? ' ' : character)
+            .ToArray());
+        var collapsed = string.Join(" ", replaced.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim();
+        if (collapsed.Length <= FinalPhotoCaptionMaxLength)
+        {
+            return collapsed;
+        }
+
+        return collapsed[..FinalPhotoCaptionMaxLength].TrimEnd();
+    }
+
+    private static void RollbackPhotoRenamePlans(IEnumerable<PhotoRenamePlan> plans)
+    {
+        foreach (var plan in plans.Reverse())
+        {
+            try
+            {
+                if (plan.FinalPath is not null && File.Exists(plan.FinalPath))
+                {
+                    if (plan.RestoresOriginalSource)
+                    {
+                        File.Move(plan.FinalPath, plan.CurrentPath, overwrite: false);
+                    }
+                    else
+                    {
+                        File.Delete(plan.FinalPath);
+                    }
+                }
+                else if (plan.RestoresOriginalSource && plan.StagingPath is not null && File.Exists(plan.StagingPath))
+                {
+                    File.Move(plan.StagingPath, plan.CurrentPath, overwrite: false);
+                }
+
+                plan.Photo.StoredFileName = plan.CurrentFileName;
+            }
+            catch
+            {
+                // best-effort rollback; finalize caller still restores report.json
+            }
+        }
+    }
+
+    private sealed class PhotoRenamePlan(Photo photo, string currentPath, string currentFileName, string targetFileName)
+    {
+        public Photo Photo { get; } = photo;
+
+        public string CurrentPath { get; } = currentPath;
+
+        public string CurrentFileName { get; } = currentFileName;
+
+        public string TargetFileName { get; set; } = targetFileName;
+
+        public string? StagingPath { get; set; }
+
+        public string? FinalPath { get; set; }
+
+        public bool RestoresOriginalSource { get; set; }
+    }
+
+    private static void ExecuteTwoPhasePhotoRename(string photosFolder, IReadOnlyList<PhotoRenamePlan> plans, bool rollbackOnFailure)
+    {
+        var renameGroups = plans
+            .Where(plan => !string.Equals(plan.CurrentFileName, plan.TargetFileName, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(plan => plan.CurrentFileName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var group in renameGroups)
+        {
+            var sourcePlan = group.First();
+            sourcePlan.RestoresOriginalSource = true;
+            sourcePlan.StagingPath = Path.Combine(
+                photosFolder,
+                $".rename.{Guid.NewGuid():N}{Path.GetExtension(sourcePlan.CurrentFileName)}");
+            EnsureWithinFolder(photosFolder, sourcePlan.StagingPath);
+            File.Move(sourcePlan.CurrentPath, sourcePlan.StagingPath, overwrite: false);
+
+            foreach (var plan in group.Skip(1))
+            {
+                plan.StagingPath = sourcePlan.StagingPath;
+            }
+        }
+
+        try
+        {
+            foreach (var group in renameGroups)
+            {
+                var groupPlans = group.ToList();
+                for (var i = 0; i < groupPlans.Count; i++)
+                {
+                    var plan = groupPlans[i];
+                    plan.TargetFileName = EnsureAvailableFinalizedPhotoName(photosFolder, plan.TargetFileName);
+                    plan.FinalPath = Path.Combine(photosFolder, plan.TargetFileName);
+                    EnsureWithinFolder(photosFolder, plan.FinalPath);
+
+                    if (i == 0)
+                    {
+                        File.Move(plan.StagingPath!, plan.FinalPath, overwrite: false);
+                    }
+                    else
+                    {
+                        File.Copy(groupPlans[0].FinalPath!, plan.FinalPath, overwrite: false);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            if (rollbackOnFailure)
+            {
+                RollbackPhotoRenamePlans(plans);
+            }
+
+            throw;
+        }
+    }
+
+    private static string EnsureAvailableFinalizedPhotoName(string photosFolder, string targetFileName)
+    {
+        var candidate = targetFileName;
+        var extension = Path.GetExtension(targetFileName);
+        var stem = Path.GetFileNameWithoutExtension(targetFileName);
+        var suffix = 2;
+        while (File.Exists(Path.Combine(photosFolder, candidate)))
+        {
+            candidate = $"{stem}_{suffix++}{extension}";
+        }
+
+        return candidate;
     }
 }

@@ -89,7 +89,7 @@ public static class HistoricalReportImportService
 
         var stagingFolder = Path.Combine(
             reportsRoot,
-            $".importing.{ProjectLayout.FormatReportNumber(request.Number)}.{Guid.NewGuid():N}");
+            $".importing.{ProjectLayout.FormatStorageReportNumber(request.Number)}.{Guid.NewGuid():N}");
         EnsureChildOfReportsRoot(reportsRoot, stagingFolder, "Import staging folder resolves outside the project reports folder.");
 
         try
