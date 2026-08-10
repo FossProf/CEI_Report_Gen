@@ -1746,7 +1746,7 @@ try
     var importedHistoricalReport = ReportStore.LoadReport(historicalImportProject, 216);
     Assert(importedHistoricalReport is not null, "historical import report reloads from report.json");
     Assert(importedHistoricalReport!.Status == ReportStatus.Final, "historical import persists Final status");
-    Assert(importedHistoricalReport.OutputFileName == Path.GetFileName(historicalSourceDocx), "historical import records the original DOCX file name");
+    Assert(string.IsNullOrWhiteSpace(importedHistoricalReport.OutputFileName), "historical import keeps OutputFileName empty when no local DOCX exists");
     Assert(importedHistoricalReport.Photos.Count == 0, "historical import stores no photos in the pilot slice");
     Assert(importedHistoricalReport.CreatedUtc >= historicalImportResult.Report!.CreatedUtc.AddSeconds(-1)
         && importedHistoricalReport.CreatedUtc <= historicalImportResult.Report.CreatedUtc.AddSeconds(1), "historical import CreatedUtc reflects import time");
@@ -2003,6 +2003,28 @@ try
     Assert(batchReviewSession.ImportLog.Count == 3, "batch import records an in-memory log entry per attempted selected report");
     Assert(batchReviewSession.Items.First(item => item.WorkingRequest?.Number == 300).ImportStatus == HistoricalImportItemStatus.Imported, "batch review item status flips to Imported after success");
     Assert(batchReviewSession.Items.First(item => item.WorkingRequest?.Number == 301).ImportStatus == HistoricalImportItemStatus.Conflict, "batch review item status shows per-report import failure");
+
+    Console.WriteLine("\n== Historical import commit engine rejects invalid destination ==");
+    var invalidDestinationFolder = Path.Combine(workspace, "historical_invalid_destination");
+    var invalidDestinationReportsFolder = Path.Combine(invalidDestinationFolder, ProjectLayout.ReportsFolderName);
+    var invalidDestinationDeletingFolder = Path.Combine(invalidDestinationReportsFolder, ".0123.deleting.test");
+    Directory.CreateDirectory(invalidDestinationDeletingFolder);
+    var invalidDestinationSentinel = Path.Combine(invalidDestinationDeletingFolder, "sentinel.txt");
+    File.WriteAllText(invalidDestinationSentinel, "keep me");
+    var invalidDestinationProject = new Project
+    {
+        Name = "Invalid Destination",
+        Number = "9998",
+        Owner = "Owner",
+        ContractManager = "CM",
+        GeneralContractor = "GC",
+        FolderPath = invalidDestinationFolder
+    };
+    ExpectActionFailure(
+        () => commitEngine.CreateSession(batchSession, invalidDestinationProject),
+        message => message.Contains("not a valid SPINgen project", StringComparison.OrdinalIgnoreCase));
+    Assert(File.Exists(invalidDestinationSentinel), "invalid destination rejection leaves sentinel untouched");
+    Assert(!File.Exists(Path.Combine(invalidDestinationFolder, ProjectLayout.ProjectFileName)), "invalid destination rejection does not create project.json");
 
     Console.WriteLine("\n== Historical import staging failure leaves no visible report ==");
     var historicalStagingProject = ProjectStore.Create(

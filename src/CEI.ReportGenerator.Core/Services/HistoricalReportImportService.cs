@@ -171,7 +171,7 @@ public static class HistoricalReportImportService
             NewDiscrepancies = request.NewDiscrepancies ?? string.Empty,
             PreviousDiscrepancies = request.PreviousDiscrepancies ?? string.Empty,
             Photos = new List<Photo>(),
-            OutputFileName = Path.GetFileName(request.SourceDocumentPath),
+            OutputFileName = string.Empty,
             CreatedUtc = importedUtc
         };
 

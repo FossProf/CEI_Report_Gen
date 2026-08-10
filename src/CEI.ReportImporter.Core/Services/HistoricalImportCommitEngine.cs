@@ -13,6 +13,7 @@ public sealed class HistoricalImportCommitEngine
     {
         ArgumentNullException.ThrowIfNull(scanSession);
         ArgumentNullException.ThrowIfNull(destinationProject);
+        EnsureValidDestinationProject(destinationProject);
 
         var session = new HistoricalReviewSession(scanSession);
         RefreshSession(session, destinationProject);
@@ -23,6 +24,7 @@ public sealed class HistoricalImportCommitEngine
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(destinationProject);
+        EnsureValidDestinationProject(destinationProject);
 
         session.ScanSession.DestinationProjectFolder = destinationProject.FolderPath;
         session.ScanSession.DestinationProjectName = destinationProject.Name;
@@ -50,6 +52,7 @@ public sealed class HistoricalImportCommitEngine
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(destinationProject);
+        EnsureValidDestinationProject(destinationProject);
 
         RefreshSession(session, destinationProject);
 
@@ -217,4 +220,12 @@ public sealed class HistoricalImportCommitEngine
             Result = result,
             Reason = reason
         };
+
+    private static void EnsureValidDestinationProject(Project destinationProject)
+    {
+        if (!ProjectLayout.IsValidProjectFolder(destinationProject.FolderPath))
+        {
+            throw new InvalidOperationException("The selected destination is not a valid SPINgen project.");
+        }
+    }
 }
