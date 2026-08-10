@@ -17,7 +17,9 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<HistoricalReviewItem> _visibleResults = [];
 
     private HistoricalReviewSession? _currentReviewSession;
+    private HistoricalReviewItem? _selectedReviewItem;
     private bool _isLoadingSelection;
+    private bool _isRefreshingCollection;
 
     public MainWindow()
     {
@@ -86,8 +88,7 @@ public partial class MainWindow : Window
             }));
 
             _currentReviewSession = new HistoricalReviewSession(session);
-            ApplyReviewFilter();
-            SummaryTextBlock.Text = BuildSummaryText(_currentReviewSession);
+            RefreshReviewCollection();
         }
         catch (Exception ex)
         {
@@ -112,11 +113,29 @@ public partial class MainWindow : Window
             return;
         }
 
-        ApplyReviewFilter();
+        CommitWorkingCopyEdits();
+        RefreshReviewCollection(_selectedReviewItem?.SourceFilePath);
     }
 
     private void ResultsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        => LoadSelectedReviewItem();
+    {
+        if (_isRefreshingCollection)
+        {
+            return;
+        }
+
+        var previousItem = _selectedReviewItem;
+        var nextItem = ResultsGrid.SelectedItem as HistoricalReviewItem;
+        if (previousItem is not null
+            && previousItem != nextItem
+            && !MatchesFilter(previousItem, GetSelectedFilter()))
+        {
+            RefreshReviewCollection(nextItem?.SourceFilePath);
+            return;
+        }
+
+        LoadSelectedReviewItem();
+    }
 
     private void ResultsGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
@@ -165,10 +184,11 @@ public partial class MainWindow : Window
                 "Cannot Mark Ready",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
+            UpdateSelectedItemPresentation(item);
             return;
         }
 
-        RefreshReviewDisplay(item);
+        RefreshReviewCollection(item.SourceFilePath);
     }
 
     private void ExcludeButton_Click(object sender, RoutedEventArgs e)
@@ -179,7 +199,7 @@ public partial class MainWindow : Window
         }
 
         item.MarkExcluded();
-        RefreshReviewDisplay(item);
+        RefreshReviewCollection(item.SourceFilePath);
     }
 
     private void ReturnToReviewButton_Click(object sender, RoutedEventArgs e)
@@ -190,7 +210,7 @@ public partial class MainWindow : Window
         }
 
         item.ReturnToReview();
-        RefreshReviewDisplay(item);
+        RefreshReviewCollection(item.SourceFilePath);
     }
 
     private void ResetChangesButton_Click(object sender, RoutedEventArgs e)
@@ -201,15 +221,16 @@ public partial class MainWindow : Window
         }
 
         item.ResetChanges();
-        RefreshReviewDisplay(item);
+        RefreshReviewCollection(item.SourceFilePath);
     }
 
-    private void ApplyReviewFilter()
+    private void RefreshReviewCollection(string? preferredSelectionPath = null)
     {
         _visibleResults.Clear();
 
         if (_currentReviewSession is null)
         {
+            _selectedReviewItem = null;
             ClearDetailPane();
             return;
         }
@@ -220,9 +241,20 @@ public partial class MainWindow : Window
             _visibleResults.Add(item);
         }
 
-        ResultsGrid.SelectedItem = _visibleResults.FirstOrDefault();
-        SummaryTextBlock.Text = BuildSummaryText(_currentReviewSession);
-        UpdateSelectionState();
+        _isRefreshingCollection = true;
+        try
+        {
+            ResultsGrid.SelectedItem = preferredSelectionPath is null
+                ? _visibleResults.FirstOrDefault()
+                : _visibleResults.FirstOrDefault(result => result.SourceFilePath == preferredSelectionPath)
+                    ?? _visibleResults.FirstOrDefault();
+        }
+        finally
+        {
+            _isRefreshingCollection = false;
+        }
+
+        LoadSelectedReviewItem();
     }
 
     private void LoadSelectedReviewItem()
@@ -232,10 +264,12 @@ public partial class MainWindow : Window
         {
             if (ResultsGrid.SelectedItem is not HistoricalReviewItem item)
             {
+                _selectedReviewItem = null;
                 ClearDetailPane();
                 return;
             }
 
+            _selectedReviewItem = item;
             SelectedReportSummaryTextBlock.Text =
                 $"{item.SourceFileName} | State: {item.ReviewStateText} | Confidence: {item.OverallConfidence}";
             WarningsTextBlock.Text = item.Warnings.Count == 0
@@ -257,6 +291,7 @@ public partial class MainWindow : Window
 
             ApplyExtractionDetails(item);
             UpdateSelectionState();
+            UpdateSummaryText();
         }
         finally
         {
@@ -312,20 +347,39 @@ public partial class MainWindow : Window
             PreviousDiscrepancies = PreviousDiscrepanciesTextBox.Text
         };
 
+        var previousReviewState = item.ReviewState;
+        var previousHasUserChanges = item.HasUserChanges;
+        var previousDisplayReportNumber = item.DisplayReportNumber;
+        var previousDisplayDate = item.DisplayDate;
+
         item.UpdateWorkingRequest(updatedRequest);
-        RefreshReviewDisplay(item, preserveSelection: true);
+        if (previousReviewState != item.ReviewState
+            || previousHasUserChanges != item.HasUserChanges
+            || previousDisplayReportNumber != item.DisplayReportNumber
+            || previousDisplayDate != item.DisplayDate)
+        {
+            UpdateSelectedItemPresentation(item);
+        }
     }
 
-    private void RefreshReviewDisplay(HistoricalReviewItem item, bool preserveSelection = true)
+    private void UpdateSelectedItemPresentation(HistoricalReviewItem item)
     {
-        var selectedPath = preserveSelection ? item.SourceFilePath : null;
-        ApplyReviewFilter();
-        if (selectedPath is not null)
+        if (!ReferenceEquals(_selectedReviewItem, item))
         {
-            ResultsGrid.SelectedItem = _visibleResults.FirstOrDefault(result => result.SourceFilePath == selectedPath);
+            return;
         }
 
-        LoadSelectedReviewItem();
+        SelectedReportSummaryTextBlock.Text =
+            $"{item.SourceFileName} | State: {item.ReviewStateText} | Confidence: {item.OverallConfidence}";
+        UpdateSelectionState();
+        UpdateSummaryText();
+    }
+
+    private void UpdateSummaryText()
+    {
+        SummaryTextBlock.Text = _currentReviewSession is null
+            ? "No scan has been run yet."
+            : BuildSummaryText(_currentReviewSession);
     }
 
     private void ClearDetailPane()
@@ -353,6 +407,7 @@ public partial class MainWindow : Window
         ReportNumberCandidatesTextBlock.Text = string.Empty;
         InspectionDateCandidatesTextBlock.Text = string.Empty;
         UpdateSelectionState();
+        UpdateSummaryText();
     }
 
     private void UpdateSelectionState()

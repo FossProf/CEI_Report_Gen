@@ -1,9 +1,11 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportImporter.Core.Services;
 
 namespace CEI.ReportImporter.Core.Models;
 
-public sealed class HistoricalReviewItem
+public sealed class HistoricalReviewItem : INotifyPropertyChanged
 {
     public HistoricalReviewItem(HistoricalScanResult scanResult)
     {
@@ -13,6 +15,8 @@ public sealed class HistoricalReviewItem
         InitialReviewState = DetermineInitialReviewState(scanResult.ParseResult);
         ReviewState = InitialReviewState;
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     public HistoricalScanResult ScanResult { get; }
 
@@ -66,30 +70,58 @@ public sealed class HistoricalReviewItem
 
     public void UpdateWorkingRequest(HistoricalReportImportRequest updatedRequest)
     {
-        WorkingRequest = updatedRequest ?? throw new ArgumentNullException(nameof(updatedRequest));
+        ArgumentNullException.ThrowIfNull(updatedRequest);
+
+        var previousRequest = WorkingRequest;
+        var previousReviewState = ReviewState;
+        var previousHasUserChanges = HasUserChanges;
+
+        WorkingRequest = updatedRequest;
         HasUserChanges = !Equals(OriginalRequest, WorkingRequest);
 
         if (ReviewState == HistoricalReviewState.Ready)
         {
             ReviewState = HistoricalReviewState.NeedsReview;
         }
+
+        NotifyForEditableStateChange(previousRequest, previousReviewState, previousHasUserChanges);
     }
 
     public void ResetChanges()
     {
+        var previousRequest = WorkingRequest;
+        var previousReviewState = ReviewState;
+        var previousHasUserChanges = HasUserChanges;
+
         WorkingRequest = OriginalRequest is null ? null : OriginalRequest with { };
         HasUserChanges = false;
         ReviewState = InitialReviewState;
+
+        NotifyForEditableStateChange(previousRequest, previousReviewState, previousHasUserChanges);
     }
 
     public void MarkExcluded()
     {
+        if (ReviewState == HistoricalReviewState.Excluded)
+        {
+            return;
+        }
+
+        var previousReviewState = ReviewState;
         ReviewState = HistoricalReviewState.Excluded;
+        NotifyForStateOnlyChange(previousReviewState);
     }
 
     public void ReturnToReview()
     {
+        if (ReviewState == InitialReviewState)
+        {
+            return;
+        }
+
+        var previousReviewState = ReviewState;
         ReviewState = InitialReviewState;
+        NotifyForStateOnlyChange(previousReviewState);
     }
 
     public bool TryMarkReady(HistoricalReviewValidator validator, out IReadOnlyList<string> validationMessages)
@@ -103,9 +135,57 @@ public sealed class HistoricalReviewItem
             return false;
         }
 
+        if (ReviewState == HistoricalReviewState.Ready)
+        {
+            return true;
+        }
+
+        var previousReviewState = ReviewState;
         ReviewState = HistoricalReviewState.Ready;
+        NotifyForStateOnlyChange(previousReviewState);
         return true;
     }
+
+    private void NotifyForEditableStateChange(
+        HistoricalReportImportRequest? previousRequest,
+        HistoricalReviewState previousReviewState,
+        bool previousHasUserChanges)
+    {
+        if (!Equals(previousRequest, WorkingRequest))
+        {
+            OnPropertyChanged(nameof(WorkingRequest));
+            OnPropertyChanged(nameof(DisplayReportNumber));
+            OnPropertyChanged(nameof(DisplayDate));
+        }
+
+        if (previousHasUserChanges != HasUserChanges)
+        {
+            OnPropertyChanged(nameof(HasUserChanges));
+            OnPropertyChanged(nameof(ChangedText));
+        }
+
+        if (previousReviewState != ReviewState)
+        {
+            OnPropertyChanged(nameof(ReviewState));
+            OnPropertyChanged(nameof(ReviewStateText));
+            OnPropertyChanged(nameof(ReadyForImport));
+        }
+    }
+
+    private void NotifyForStateOnlyChange(HistoricalReviewState previousReviewState)
+    {
+        if (previousReviewState == ReviewState)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(ReviewState));
+        OnPropertyChanged(nameof(ReviewStateText));
+        OnPropertyChanged(nameof(ReadyForImport));
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     private static HistoricalReviewState DetermineInitialReviewState(HistoricalReportParseResult parseResult)
     {

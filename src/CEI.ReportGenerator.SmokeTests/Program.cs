@@ -1743,21 +1743,51 @@ try
     var reviewItem = reviewSession.Items.First(item => item.ParseSucceeded);
     Assert(reviewItem.OriginalRequest is not null && reviewItem.WorkingRequest is not null, "historical review item keeps both original and working requests");
     Assert(reviewItem.ReviewState == HistoricalReviewState.Unreviewed, "historical review item starts clean parses as unreviewed");
+    var notifiedProperties = new List<string>();
+    reviewItem.PropertyChanged += (_, args) =>
+    {
+        if (!string.IsNullOrWhiteSpace(args.PropertyName))
+        {
+            notifiedProperties.Add(args.PropertyName);
+        }
+    };
     var editableWorkingRequest = reviewItem.WorkingRequest ?? throw new InvalidOperationException("Review item should have a working request after a successful parse.");
     reviewItem.UpdateWorkingRequest(editableWorkingRequest with { Weather = "Manual override weather" });
     Assert(reviewItem.HasUserChanges, "historical review item tracks manual corrections");
     Assert(reviewItem.WorkingRequest!.Weather == "Manual override weather", "historical review item updates the editable working request");
     Assert(reviewItem.OriginalRequest!.Weather != reviewItem.WorkingRequest.Weather, "historical review item preserves the original parsed request");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.WorkingRequest)), "historical review item notifies WorkingRequest changes");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.HasUserChanges)), "historical review item notifies HasUserChanges changes");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.ChangedText)), "historical review item notifies ChangedText changes");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.DisplayReportNumber)) && notifiedProperties.Contains(nameof(HistoricalReviewItem.DisplayDate)), "historical review item notifies row display fields after edits");
+
+    notifiedProperties.Clear();
     Assert(reviewItem.TryMarkReady(new HistoricalReviewValidator(), out var readyMessages), "historical review item can be marked ready after validation");
     Assert(readyMessages.Count == 0, "historical review ready validation succeeds without messages for a valid item");
     Assert(reviewItem.ReviewState == HistoricalReviewState.Ready, "historical review item transitions into ready state");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.ReviewState)) && notifiedProperties.Contains(nameof(HistoricalReviewItem.ReviewStateText)), "historical review item notifies ready-state transitions");
+
+    notifiedProperties.Clear();
+    reviewItem.UpdateWorkingRequest(reviewItem.WorkingRequest with { Observations = "Ready item edit pushes back to needs review." });
+    Assert(reviewItem.ReviewState == HistoricalReviewState.NeedsReview, "historical review item demotes ready items back to needs review while editing");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.ReviewStateText)), "historical review item notifies ready-to-needs-review edit demotion");
+
+    notifiedProperties.Clear();
     reviewItem.MarkExcluded();
     Assert(reviewItem.ReviewState == HistoricalReviewState.Excluded, "historical review item can be excluded without deleting source files");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.ReviewStateText)), "historical review item notifies exclusion state changes");
+
+    notifiedProperties.Clear();
     reviewItem.ReturnToReview();
     Assert(reviewItem.ReviewState == reviewItem.InitialReviewState, "historical review item can be returned from excluded to the initial review state");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.ReviewStateText)), "historical review item notifies return-to-review state changes");
+
+    notifiedProperties.Clear();
     reviewItem.ResetChanges();
     Assert(!reviewItem.HasUserChanges, "historical review reset clears manual correction tracking");
     Assert(reviewItem.WorkingRequest == reviewItem.OriginalRequest, "historical review reset restores the original working request");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.WorkingRequest)), "historical review reset notifies working-request restoration");
+    Assert(notifiedProperties.Contains(nameof(HistoricalReviewItem.ChangedText)), "historical review reset notifies changed-indicator restoration");
 
     var invalidReviewResult = new HistoricalScanResult
     {
