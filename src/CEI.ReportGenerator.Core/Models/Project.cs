@@ -15,6 +15,14 @@ public sealed class Project
 
     public string GeneralContractor { get; set; } = string.Empty;
 
+    public string LocationText { get; set; } = string.Empty;
+
+    public double? LocationLatitude { get; set; }
+
+    public double? LocationLongitude { get; set; }
+
+    public string LocationTimeZoneId { get; set; } = string.Empty;
+
     public string FolderPath { get; set; } = string.Empty;
 
     public string TemplatePath { get; set; } = string.Empty;
@@ -54,4 +62,17 @@ public sealed class Project
     [JsonIgnore]
     public string? ResolvedProjectManagerSignaturePath
         => SignatureStore.Resolve(FolderPath, ProjectManagerSignaturePath).FullPath;
+
+    [JsonIgnore]
+    public bool HasResolvedLocation
+        => !string.IsNullOrWhiteSpace(LocationText)
+           && LocationLatitude.HasValue
+           && LocationLongitude.HasValue
+           && !string.IsNullOrWhiteSpace(LocationTimeZoneId);
+
+    [JsonIgnore]
+    public ProjectCoordinates? Coordinates
+        => HasResolvedLocation
+            ? new ProjectCoordinates(LocationLatitude!.Value, LocationLongitude!.Value, LocationTimeZoneId)
+            : null;
 }

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,6 +19,8 @@ public partial class ReportEditorWindow : Window
     private readonly Project _project;
     private readonly InspectionReport _report;
     private readonly bool _isFinalReport;
+    private readonly TemperatureAssistanceSession _temperatureSession;
+    private bool _isUpdatingTemperatureUi;
 
     public ReportEditorWindow(Project project, InspectionReport report, bool isNew)
     {
@@ -37,6 +40,15 @@ public partial class ReportEditorWindow : Window
 
         DatePicker.SelectedDate = report.Date;
         TemperatureBox.Text = report.Temperature;
+        _temperatureSession = new TemperatureAssistanceSession(
+            project,
+            report.Temperature,
+            report.Date,
+            isNew,
+            _isFinalReport,
+            App.CurrentApp.Settings.TemperatureAssistance,
+            App.CurrentApp.TemperatureService);
+        _temperatureSession.PropertyChanged += TemperatureSession_PropertyChanged;
         WeatherCombo.ItemsSource = WeatherOptions.All;
         if (WeatherOptions.IsValid(report.Weather))
         {
@@ -67,6 +79,9 @@ public partial class ReportEditorWindow : Window
         UpdatePhotoButtons();
         UpdatePhotoEmptyState();
         ApplyLifecyclePresentation();
+        ApplyTemperatureAssistancePresentation();
+        Loaded += async (_, _) => await _temperatureSession.InitializeAsync();
+        Closed += (_, _) => _temperatureSession.Dispose();
     }
 
     private static readonly string[] PhotoExtensions = { ".png", ".jpg", ".jpeg", ".gif", ".bmp" };
@@ -298,6 +313,18 @@ public partial class ReportEditorWindow : Window
         FinalMetadataNoteText.Visibility = Visibility.Visible;
     }
 
+    private void ApplyTemperatureAssistancePresentation()
+    {
+        AutoTemperatureCheckBox.Visibility = _temperatureSession.IsFeatureEnabled
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        AutoTemperatureCheckBox.IsChecked = _temperatureSession.AutoEnabled;
+        TemperatureLookupStatusText.Text = _temperatureSession.StatusMessage;
+        TemperatureLookupStatusText.Visibility = _temperatureSession.HasStatusMessage
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
     private static T? FindVisualAncestor<T>(DependencyObject current) where T : DependencyObject
     {
         while (current is not null)
@@ -484,5 +511,61 @@ public partial class ReportEditorWindow : Window
 
         File.WriteAllText(logPath, builder.ToString());
         return logPath;
+    }
+
+    private async void AutoTemperatureCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        await _temperatureSession.SetAutoEnabledAsync(true, DatePicker.SelectedDate ?? DateTime.Today);
+    }
+
+    private async void AutoTemperatureCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (_isUpdatingTemperatureUi)
+        {
+            return;
+        }
+
+        await _temperatureSession.SetAutoEnabledAsync(false, DatePicker.SelectedDate ?? DateTime.Today);
+    }
+
+    private async void DatePicker_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DatePicker.SelectedDate is { } selectedDate)
+        {
+            await _temperatureSession.UpdateDateAsync(selectedDate);
+        }
+    }
+
+    private void TemperatureBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingTemperatureUi)
+        {
+            return;
+        }
+
+        _temperatureSession.ApplyManualTemperatureOverride(TemperatureBox.Text.Trim());
+    }
+
+    private void TemperatureSession_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        _isUpdatingTemperatureUi = true;
+        try
+        {
+            if (TemperatureBox.Text != _temperatureSession.TemperatureText)
+            {
+                TemperatureBox.Text = _temperatureSession.TemperatureText;
+                TemperatureBox.CaretIndex = TemperatureBox.Text.Length;
+            }
+
+            AutoTemperatureCheckBox.IsChecked = _temperatureSession.AutoEnabled;
+            TemperatureLookupStatusText.Text = _temperatureSession.StatusMessage;
+            TemperatureLookupStatusText.Visibility = _temperatureSession.HasStatusMessage
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        finally
+        {
+            _isUpdatingTemperatureUi = false;
+        }
     }
 }

@@ -7,11 +7,16 @@ namespace CEI.ReportGenerator.App.Views;
 public partial class ApplicationSettingsWindow : Window
 {
     private readonly ApplicationSettings _workingCopy;
+    private readonly IReadOnlyList<HourOption> _hourOptions = Enumerable.Range(0, 24)
+        .Select(hour => new HourOption(hour, DateTime.Today.AddHours(hour).ToString("h:00 tt")))
+        .ToList();
 
     public ApplicationSettingsWindow(ApplicationSettings settings)
     {
         InitializeComponent();
         _workingCopy = settings.Clone();
+        HistoricalDayStartHourComboBox.ItemsSource = _hourOptions;
+        HistoricalDayEndHourComboBox.ItemsSource = _hourOptions;
         PopulateForm(_workingCopy);
     }
 
@@ -22,6 +27,10 @@ public partial class ApplicationSettingsWindow : Window
         DefaultProjectsFolderBox.Text = settings.DefaultProjectsFolder;
         RecentProjectLimitBox.Text = settings.RecentProjectLimit.ToString();
         ReopenLastProjectCheckBox.IsChecked = settings.ReopenLastProjectOnStartup;
+        TemperatureLookupEnabledCheckBox.IsChecked = settings.TemperatureAssistance.TemperatureLookupEnabled;
+        TemperatureAutoEnabledForNewReportsCheckBox.IsChecked = settings.TemperatureAssistance.TemperatureAutoEnabledForNewReports;
+        HistoricalDayStartHourComboBox.SelectedItem = _hourOptions.First(option => option.Hour == settings.TemperatureAssistance.HistoricalDayStartHour);
+        HistoricalDayEndHourComboBox.SelectedItem = _hourOptions.First(option => option.Hour == settings.TemperatureAssistance.HistoricalDayEndHour);
         ErrorText.Visibility = Visibility.Collapsed;
         ErrorText.Text = string.Empty;
     }
@@ -61,6 +70,13 @@ public partial class ApplicationSettingsWindow : Window
         _workingCopy.DefaultProjectsFolder = DefaultProjectsFolderBox.Text.Trim();
         _workingCopy.RecentProjectLimit = recentLimit;
         _workingCopy.ReopenLastProjectOnStartup = ReopenLastProjectCheckBox.IsChecked == true;
+        _workingCopy.TemperatureAssistance.TemperatureLookupEnabled = TemperatureLookupEnabledCheckBox.IsChecked == true;
+        _workingCopy.TemperatureAssistance.TemperatureAutoEnabledForNewReports =
+            TemperatureAutoEnabledForNewReportsCheckBox.IsChecked == true;
+        _workingCopy.TemperatureAssistance.HistoricalDayStartHour =
+            (HistoricalDayStartHourComboBox.SelectedItem as HourOption)?.Hour ?? ApplicationSettings.CreateDefaults().TemperatureAssistance.HistoricalDayStartHour;
+        _workingCopy.TemperatureAssistance.HistoricalDayEndHour =
+            (HistoricalDayEndHourComboBox.SelectedItem as HourOption)?.Hour ?? ApplicationSettings.CreateDefaults().TemperatureAssistance.HistoricalDayEndHour;
 
         try
         {
@@ -95,5 +111,10 @@ public partial class ApplicationSettingsWindow : Window
         }
 
         return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+    }
+
+    private sealed record HourOption(int Hour, string Label)
+    {
+        public override string ToString() => Label;
     }
 }

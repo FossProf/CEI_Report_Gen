@@ -23,6 +23,12 @@ The WPF application layer is responsible for:
 
 The App layer should not directly manipulate JSON files or DOCX internals.
 
+The App layer now also owns:
+
+- temperature-assistance session state
+- async lookup cancellation and stale-result suppression
+- project-location resolution workflow presentation
+
 ### Core
 
 The Core layer is responsible for:
@@ -43,6 +49,24 @@ This layer is responsible for:
 - signature and photo storage
 - template validation
 - Open XML document generation
+- provider-backed geocoding and temperature lookup abstractions
+
+## Temperature Assistance Architecture
+
+Temperature assistance is intentionally additive and isolated from the report schema.
+
+- `ApplicationSettings.TemperatureAssistance` controls the master feature switch, new-report Auto default, and historical daytime averaging hours.
+- `Project` stores optional `LocationText`, cached coordinates, and timezone data.
+- `IProjectLocationResolver` abstracts geocoding.
+- `IProjectTemperatureService` abstracts current and historical temperature lookup.
+- `ProjectLocationResolutionWorkflow` decides whether saved coordinates can be reused or fresh geocoding is required.
+- `TemperatureAssistanceSession` owns report-editor session behavior such as:
+  - new-report Auto defaults
+  - final-report Auto default off
+  - manual override turning Auto off
+  - cancellation and latest-request-wins behavior
+
+Provider-specific HTTP, JSON DTOs, URLs, and caching remain outside WPF code-behind.
 
 ## Key Protected Components
 

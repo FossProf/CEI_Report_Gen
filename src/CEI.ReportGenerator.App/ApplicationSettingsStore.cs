@@ -52,6 +52,18 @@ public sealed class ApplicationSettingsStore
                 settings.DefaultProjectsFolder = ApplicationSettings.CreateDefaults().DefaultProjectsFolder;
             }
 
+            settings.TemperatureAssistance ??= new TemperatureAssistanceSettings();
+            settings.TemperatureAssistance.HistoricalDayStartHour =
+                ApplicationSettingsValidator.NormalizeHour(settings.TemperatureAssistance.HistoricalDayStartHour);
+            settings.TemperatureAssistance.HistoricalDayEndHour =
+                ApplicationSettingsValidator.NormalizeHour(settings.TemperatureAssistance.HistoricalDayEndHour);
+            if (settings.TemperatureAssistance.HistoricalDayStartHour >= settings.TemperatureAssistance.HistoricalDayEndHour)
+            {
+                var defaults = ApplicationSettings.CreateDefaults().TemperatureAssistance;
+                settings.TemperatureAssistance.HistoricalDayStartHour = defaults.HistoricalDayStartHour;
+                settings.TemperatureAssistance.HistoricalDayEndHour = defaults.HistoricalDayEndHour;
+            }
+
             return settings;
         }
         catch (Exception ex)

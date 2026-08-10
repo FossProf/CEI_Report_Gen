@@ -34,7 +34,22 @@
                 <TextBlock Text="General contractor *" Style="{StaticResource FieldLabel}"/>
                 <TextBox x:Name="GeneralBox" Style="{StaticResource FieldBox}"/>
 
-                <TextBlock x:Name="ProjectLocationLabel" Text="Project location *" Style="{StaticResource FieldLabel}"/>
+                <TextBlock Text="Project location" Style="{StaticResource FieldLabel}"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="ProjectLocationBox" Grid.Column="0" Style="{StaticResource FieldBox}"/>
+                    <Button x:Name="TestLocationButton" Grid.Column="1" Content="Test Location" Margin="6,0,0,0"
+                            Style="{StaticResource SecondaryButton}" Padding="10,4" Click="TestLocationButton_Click"/>
+                </Grid>
+                <TextBlock x:Name="ProjectLocationStatusText"
+                           Style="{StaticResource SecondaryText}"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,0"/>
+
+                <TextBlock x:Name="ProjectFolderLabel" Text="Project folder *" Style="{StaticResource FieldLabel}"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>

@@ -23,7 +23,8 @@
                 <TextBlock Text="Report #" Style="{StaticResource FieldLabel}" Margin="20,0,6,0" VerticalAlignment="Center"/>
                 <TextBox x:Name="ReportNumberBox" Width="80" VerticalAlignment="Center" Style="{StaticResource FieldBox}"/>
                 <TextBlock Text="Inspection date *" Style="{StaticResource FieldLabel}" Margin="20,0,6,0" VerticalAlignment="Center"/>
-                <DatePicker x:Name="DatePicker" Width="160" VerticalAlignment="Center" SelectedDateFormat="Long"/>
+                <DatePicker x:Name="DatePicker" Width="160" VerticalAlignment="Center" SelectedDateFormat="Long"
+                            SelectedDateChanged="DatePicker_SelectedDateChanged"/>
             </StackPanel>
         </StackPanel>
 
@@ -38,7 +39,25 @@
                     <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                             <TextBlock Text="Temperature (&#176;F)" Style="{StaticResource FieldLabel}"/>
-                            <TextBox x:Name="TemperatureBox" Style="{StaticResource FieldBox}" Width="120" HorizontalAlignment="Left"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBox x:Name="TemperatureBox"
+                                         Style="{StaticResource FieldBox}"
+                                         Width="120"
+                                         HorizontalAlignment="Left"
+                                         TextChanged="TemperatureBox_TextChanged"/>
+                                <CheckBox x:Name="AutoTemperatureCheckBox"
+                                          Content="Auto"
+                                          Margin="12,6,0,0"
+                                          VerticalAlignment="Top"
+                                          ToolTip="Automatically look up temperature using the project location and inspection date."
+                                          Checked="AutoTemperatureCheckBox_Checked"
+                                          Unchecked="AutoTemperatureCheckBox_Unchecked"/>
+                            </StackPanel>
+                            <TextBlock x:Name="TemperatureLookupStatusText"
+                                       Style="{StaticResource SecondaryText}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0"
+                                       Visibility="Collapsed"/>
 
                             <TextBlock Text="Weather *" Style="{StaticResource FieldLabel}"/>
                             <ComboBox x:Name="WeatherCombo" Width="200" HorizontalAlignment="Left"

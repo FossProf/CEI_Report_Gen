@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using CEI.ReportGenerator.App.Services;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
@@ -12,6 +13,7 @@ namespace CEI.ReportGenerator.App.Views;
 public partial class ProjectSetupWindow : Window
 {
     private readonly Project? _existing;
+    private ProjectLocationResolutionOutcome? _locationResolution;
 
     public ProjectSetupWindow(Project? existing = null)
     {
@@ -23,7 +25,7 @@ public partial class ProjectSetupWindow : Window
         {
             Title = "Edit Project";
             SaveButton.Content = "Save Changes";
-            ProjectLocationLabel.Text = "Project folder *";
+            ProjectFolderLabel.Text = "Project folder *";
             ProjectFolderHelpText.Text = "Project files remain in this folder:";
             FolderBox.Text = existing.FolderPath;
             FolderBrowseButton.IsEnabled = false;
@@ -68,9 +70,15 @@ public partial class ProjectSetupWindow : Window
         OwnerBox.Text = project.Owner;
         ContractBox.Text = project.ContractManager;
         GeneralBox.Text = project.GeneralContractor;
+        ProjectLocationBox.Text = project.LocationText;
         TemplateBox.Text = project.TemplatePath;
         RefreshSignatureCombo(InspectorSigCombo, project.InspectorSignaturePath);
         RefreshSignatureCombo(PMSigCombo, project.ProjectManagerSignaturePath);
+        if (project.Coordinates is not null)
+        {
+            _locationResolution = ProjectLocationResolutionOutcome.FromCached(project.LocationText, project.Coordinates);
+            ProjectLocationStatusText.Text = "Location resolved.";
+        }
     }
 
     private void NameBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -215,7 +223,12 @@ public partial class ProjectSetupWindow : Window
         }
     }
 
-    private void SaveButton_Click(object sender, RoutedEventArgs e)
+    private async void TestLocationButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ResolveProjectLocationAsync(showSuccessMessage: true);
+    }
+
+    private async void SaveButton_Click(object sender, RoutedEventArgs e)
     {
         var errors = new List<string>();
 
@@ -252,6 +265,7 @@ public partial class ProjectSetupWindow : Window
 
         try
         {
+            var resolvedLocation = await ResolveProjectLocationAsync(showSuccessMessage: false);
             if (_existing is null)
             {
                 ApplicationSettingsValidator.ValidateAndEnsureFolder(ProjectRootPath);
@@ -286,7 +300,11 @@ public partial class ProjectSetupWindow : Window
                     GeneralBox.Text,
                     TemplateBox.Text,
                     SignatureStore.SignatureRelativePath(inspectorSig!),
-                    SignatureStore.SignatureRelativePath(pmSig!));
+                    SignatureStore.SignatureRelativePath(pmSig!),
+                    resolvedLocation.LocationText,
+                    resolvedLocation.Coordinates?.Latitude,
+                    resolvedLocation.Coordinates?.Longitude,
+                    resolvedLocation.Coordinates?.TimeZoneId);
             }
             else
             {
@@ -299,8 +317,22 @@ public partial class ProjectSetupWindow : Window
                     GeneralBox.Text,
                     TemplateBox.Text,
                     SignatureStore.SignatureRelativePath(inspectorSig!),
-                    SignatureStore.SignatureRelativePath(pmSig!));
+                    SignatureStore.SignatureRelativePath(pmSig!),
+                    resolvedLocation.LocationText,
+                    resolvedLocation.Coordinates?.Latitude,
+                    resolvedLocation.Coordinates?.Longitude,
+                    resolvedLocation.Coordinates?.TimeZoneId);
                 CreatedProject = _existing;
+            }
+
+            if (!string.IsNullOrWhiteSpace(resolvedLocation.LocationText) && !resolvedLocation.IsResolved)
+            {
+                MessageBox.Show(
+                    this,
+                    "Project settings were saved, but automatic temperature lookup will be unavailable until this project location can be resolved.",
+                    "Location Unresolved",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
             }
 
             DialogResult = true;
@@ -342,6 +374,38 @@ public partial class ProjectSetupWindow : Window
     {
         ErrorText.Text = string.Empty;
         ErrorText.Visibility = Visibility.Collapsed;
+    }
+
+    private async Task<ProjectLocationResolutionOutcome> ResolveProjectLocationAsync(bool showSuccessMessage)
+    {
+        var locationText = ProjectLocationBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(locationText))
+        {
+            _locationResolution = ProjectLocationResolutionOutcome.Cleared();
+            ProjectLocationStatusText.Text = "Automatic temperature lookup requires a project location.";
+            return _locationResolution;
+        }
+
+        var workflow = App.CurrentApp.LocationResolutionWorkflow;
+        ProjectLocationStatusText.Text = "Resolving project location...";
+        var outcome = await workflow.ResolveAsync(_existing, locationText, CancellationToken.None);
+        _locationResolution = outcome;
+        if (outcome.IsResolved)
+        {
+            ProjectLocationStatusText.Text = outcome.UsedCachedCoordinates
+                ? "Location resolved from saved project coordinates."
+                : "Location resolved.";
+            if (showSuccessMessage)
+            {
+                ClearErrors();
+            }
+        }
+        else
+        {
+            ProjectLocationStatusText.Text = "Automatic temperature lookup will be unavailable until this location can be resolved.";
+        }
+
+        return outcome;
     }
 
     private static string GetExistingParent(string path)

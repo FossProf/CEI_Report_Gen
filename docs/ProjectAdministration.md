@@ -24,6 +24,24 @@ Project settings can be updated after creation. Typical reasons include:
 
 Editing settings updates project data only. Existing finalized reports are not renamed retroactively.
 
+### Project Location
+
+Project settings now includes an optional human-readable project location used for temperature assistance.
+
+Examples:
+
+- ZIP code
+- city and ZIP
+- street address
+
+When the location resolves successfully, SPINgen stores stable latitude/longitude coordinates and the project timezone in `project.json`. Future report editors can then use those saved coordinates without geocoding the same project location again.
+
+If the location cannot be resolved:
+
+- project settings can still be saved
+- report generation is unaffected
+- automatic temperature lookup remains unavailable until the location is corrected or successfully resolved later
+
 ## Signatures
 
 Each project keeps signatures inside its own `Signatures\\` folder.
@@ -49,6 +67,8 @@ Project validation checks:
 - signature presence and file type
 - path safety
 - template and signature contract readiness
+
+Project location is optional for core report generation. It is only required for automatic temperature lookup.
 
 Validation is useful before field use, before release packaging demos, and after moving project folders between machines.
 

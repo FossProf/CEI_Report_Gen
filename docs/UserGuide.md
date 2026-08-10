@@ -19,6 +19,9 @@ Application Settings currently controls:
 - default projects folder
 - number of recent projects shown
 - whether the last project reopens on startup
+- whether temperature lookup is enabled
+- whether new reports start with temperature Auto enabled
+- the historical daytime averaging window used for past-date temperature assistance
 
 These settings affect the shell experience only. They do not modify project business data.
 
@@ -65,9 +68,24 @@ The editor supports:
 
 - saving draft reports
 - editing required inspection fields
+- optional automatic temperature lookup for today and past dates
 - reordering photos
 - captioning photos
 - generating preview output
+
+### Temperature Assistance
+
+Temperature assistance is an optional editor feature.
+
+- `Auto` uses the project location plus the selected inspection date
+- today's reports use current temperature
+- past-date reports use the configured daytime historical average
+- future-dated reports are not auto-populated
+- weather remains fully manual
+
+If you manually type a different temperature while `Auto` is on, SPINgen immediately turns `Auto` off for that editor session and preserves your manual value.
+
+Temperature assistance depends on a resolvable project location. If the project location is missing, unresolved, or the weather service is unavailable, enter temperature manually and continue working normally.
 
 ## Preview and Finalization
 

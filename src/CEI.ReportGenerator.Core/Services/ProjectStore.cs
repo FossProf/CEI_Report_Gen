@@ -6,7 +6,9 @@ public static class ProjectStore
 {
     public static Project Create(string folderPath, string name, string number, string owner,
         string contractManager, string generalContractor, string templateSourcePath,
-        string inspectorSignaturePath, string projectManagerSignaturePath)
+        string inspectorSignaturePath, string projectManagerSignaturePath,
+        string? locationText = null, double? locationLatitude = null,
+        double? locationLongitude = null, string? locationTimeZoneId = null)
     {
         var project = new Project
         {
@@ -15,6 +17,10 @@ public static class ProjectStore
             Owner = owner.Trim(),
             ContractManager = contractManager.Trim(),
             GeneralContractor = generalContractor.Trim(),
+            LocationText = locationText?.Trim() ?? string.Empty,
+            LocationLatitude = locationLatitude,
+            LocationLongitude = locationLongitude,
+            LocationTimeZoneId = locationTimeZoneId?.Trim() ?? string.Empty,
             FolderPath = Path.GetFullPath(folderPath),
             CreatedUtc = DateTime.UtcNow
         };
@@ -69,13 +75,17 @@ public static class ProjectStore
 
     public static void Update(Project project, string name, string number, string owner,
         string contractManager, string generalContractor, string templateSourcePath,
-        string inspectorSignaturePath, string projectManagerSignaturePath)
+        string inspectorSignaturePath, string projectManagerSignaturePath,
+        string? locationText = null, double? locationLatitude = null,
+        double? locationLongitude = null, string? locationTimeZoneId = null)
     {
         var trimmedName = name.Trim();
         var trimmedNumber = number.Trim();
         var trimmedOwner = owner.Trim();
         var trimmedContractManager = contractManager.Trim();
         var trimmedGeneralContractor = generalContractor.Trim();
+        var trimmedLocationText = locationText?.Trim() ?? string.Empty;
+        var trimmedLocationTimeZoneId = locationTimeZoneId?.Trim() ?? string.Empty;
 
         var stagedTemplate = StageTemplateReplacement(project, templateSourcePath);
         var stagedInspector = StageSignature(project, inspectorSignaturePath);
@@ -98,6 +108,10 @@ public static class ProjectStore
             candidate.Owner = trimmedOwner;
             candidate.ContractManager = trimmedContractManager;
             candidate.GeneralContractor = trimmedGeneralContractor;
+            candidate.LocationText = trimmedLocationText;
+            candidate.LocationLatitude = locationLatitude;
+            candidate.LocationLongitude = locationLongitude;
+            candidate.LocationTimeZoneId = trimmedLocationTimeZoneId;
             candidate.TemplatePath = stagedTemplate.FinalPath;
             candidate.InspectorSignaturePath = stagedInspector.FinalRelativePath;
             candidate.ProjectManagerSignaturePath = stagedProjectManager.FinalRelativePath;
@@ -398,6 +412,10 @@ public static class ProjectStore
             Owner = project.Owner,
             ContractManager = project.ContractManager,
             GeneralContractor = project.GeneralContractor,
+            LocationText = project.LocationText,
+            LocationLatitude = project.LocationLatitude,
+            LocationLongitude = project.LocationLongitude,
+            LocationTimeZoneId = project.LocationTimeZoneId,
             FolderPath = project.FolderPath,
             TemplatePath = project.TemplatePath,
             InspectorSignaturePath = project.InspectorSignaturePath,
@@ -416,6 +434,10 @@ public static class ProjectStore
         destination.Owner = source.Owner;
         destination.ContractManager = source.ContractManager;
         destination.GeneralContractor = source.GeneralContractor;
+        destination.LocationText = source.LocationText;
+        destination.LocationLatitude = source.LocationLatitude;
+        destination.LocationLongitude = source.LocationLongitude;
+        destination.LocationTimeZoneId = source.LocationTimeZoneId;
         destination.FolderPath = source.FolderPath;
         destination.TemplatePath = source.TemplatePath;
         destination.InspectorSignaturePath = source.InspectorSignaturePath;
@@ -438,6 +460,10 @@ public static class ProjectStore
             Owner = project.Owner,
             ContractManager = project.ContractManager,
             GeneralContractor = project.GeneralContractor,
+            LocationText = project.LocationText,
+            LocationLatitude = project.LocationLatitude,
+            LocationLongitude = project.LocationLongitude,
+            LocationTimeZoneId = project.LocationTimeZoneId,
             FolderPath = folderPath,
             TemplatePath = templatePath,
             InspectorSignaturePath = project.InspectorSignaturePath,

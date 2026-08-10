@@ -12,6 +12,10 @@ public static class Validation
         AddRequired(errors, "Owner", project.Owner);
         AddRequired(errors, "Contract manager", project.ContractManager);
         AddRequired(errors, "General contractor", project.GeneralContractor);
+        if (project.LocationLatitude.HasValue != project.LocationLongitude.HasValue)
+        {
+            errors.Add("Project location coordinates must include both latitude and longitude.");
+        }
 
         if (string.IsNullOrWhiteSpace(project.FolderPath) || !Directory.Exists(project.FolderPath))
         {

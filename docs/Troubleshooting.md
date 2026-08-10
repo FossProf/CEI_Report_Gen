@@ -53,6 +53,33 @@ Recommended steps:
 
 SPINgen blocks partial deletion on purpose when Windows reports an active file lock.
 
+## Automatic Temperature Lookup Does Not Fill In
+
+Check for:
+
+- the Application Settings master temperature lookup switch is enabled
+- the project has a saved, resolvable project location
+- the inspection date is today or in the past
+- internet access is available
+
+Important behavior:
+
+- SPINgen never auto-fills the `Weather` field
+- future-dated reports do not use forecast temperatures
+- historical values are based on the configured daytime window, which defaults to `7:00 AM` through `5:00 PM`
+
+If lookup is unavailable, SPINgen leaves the existing temperature value unchanged and you can enter the field manually.
+
+## Project Location Will Not Resolve
+
+If a project location does not resolve:
+
+1. simplify the location text
+2. try ZIP code, city plus ZIP, or full street address
+3. save the project anyway if you need to continue working
+
+Unresolved project location does not block report generation. It only disables automatic temperature assistance until the location can be resolved.
+
 ## Installer Appears Out Of Date
 
 If a newly installed MSI does not reflect current UI work:

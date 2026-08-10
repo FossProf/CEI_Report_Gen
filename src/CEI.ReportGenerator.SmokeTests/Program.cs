@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using CEI.ReportGenerator.App;
+using CEI.ReportGenerator.App.Services;
+using CEI.ReportGenerator.App.ViewModels;
 using CEI.ReportGenerator.Core;
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
@@ -105,6 +107,211 @@ try
     Assert(migratedSettings.RecentProjectLimit == 9, "legacy settings keeps recent project limit");
     Assert(migratedSettings.ReopenLastProjectOnStartup, "legacy settings keeps startup reopen preference");
     Assert(migratedSettings.LastOpenedProjectPath == @"C:\LegacyProjects\Demo", "legacy settings keeps last opened project path");
+
+    Console.WriteLine("\n== Temperature assistance settings and session ==");
+    Assert(defaultSettings.TemperatureAssistance.TemperatureLookupEnabled, "temperature lookup defaults enabled");
+    Assert(defaultSettings.TemperatureAssistance.TemperatureAutoEnabledForNewReports, "auto temperature defaults enabled for new reports");
+    Assert(defaultSettings.TemperatureAssistance.HistoricalDayStartHour == 7, "temperature assistance defaults to 7 AM start");
+    Assert(defaultSettings.TemperatureAssistance.HistoricalDayEndHour == 17, "temperature assistance defaults to 5 PM end");
+
+    var roundTripTemperatureSettings = defaultSettings.Clone();
+    roundTripTemperatureSettings.TemperatureAssistance.TemperatureLookupEnabled = false;
+    roundTripTemperatureSettings.TemperatureAssistance.TemperatureAutoEnabledForNewReports = false;
+    roundTripTemperatureSettings.TemperatureAssistance.HistoricalDayStartHour = 8;
+    roundTripTemperatureSettings.TemperatureAssistance.HistoricalDayEndHour = 18;
+    settingsStore.Save(roundTripTemperatureSettings);
+    var reloadedTemperatureSettings = settingsStore.Load();
+    Assert(!reloadedTemperatureSettings.TemperatureAssistance.TemperatureLookupEnabled, "temperature lookup setting round trips");
+    Assert(!reloadedTemperatureSettings.TemperatureAssistance.TemperatureAutoEnabledForNewReports, "temperature auto default setting round trips");
+    Assert(reloadedTemperatureSettings.TemperatureAssistance.HistoricalDayStartHour == 8, "temperature start hour round trips");
+    Assert(reloadedTemperatureSettings.TemperatureAssistance.HistoricalDayEndHour == 18, "temperature end hour round trips");
+
+    var invalidTemperatureSettings = ApplicationSettings.CreateDefaults();
+    invalidTemperatureSettings.TemperatureAssistance.HistoricalDayStartHour = 17;
+    invalidTemperatureSettings.TemperatureAssistance.HistoricalDayEndHour = 17;
+    Assert(ApplicationSettingsValidator.Validate(invalidTemperatureSettings).Any(e => e.Contains("earlier than end hour", StringComparison.OrdinalIgnoreCase)),
+        "temperature assistance start/end hours validate");
+
+    var averageResult = HistoricalTemperatureAverager.AverageFahrenheit([70, 72, 74, 76, 78]);
+    Assert(averageResult.RoundedTemperatureFahrenheit == 74, "historical average helper returns arithmetic mean with whole-degree rounding");
+
+    var temperatureProject = new Project
+    {
+        Name = "Temperature Project",
+        Number = "701",
+        Owner = "Owner",
+        ContractManager = "CM",
+        GeneralContractor = "GC",
+        FolderPath = Path.Combine(workspace, "temperature_project"),
+        LocationText = "Louisville, KY 40299",
+        LocationLatitude = 38.2115,
+        LocationLongitude = -85.5565,
+        LocationTimeZoneId = "Eastern Standard Time"
+    };
+    var disabledService = new FakeProjectTemperatureService
+    {
+        CurrentResultFactory = _ => Task.FromResult(TemperatureLookupResult.Success(84.4))
+    };
+    var disabledSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        string.Empty,
+        new DateTime(2026, 8, 10),
+        isNewReport: true,
+        isFinalReport: false,
+        new TemperatureAssistanceSettings
+        {
+            TemperatureLookupEnabled = false,
+            TemperatureAutoEnabledForNewReports = true,
+            HistoricalDayStartHour = 7,
+            HistoricalDayEndHour = 17
+        },
+        disabledService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    await disabledSession.InitializeAsync();
+    Assert(!disabledSession.AutoEnabled, "master temperature feature disabled keeps auto off");
+    Assert(disabledService.CurrentCallCount == 0, "master temperature feature disabled performs no lookup");
+
+    var locationWorkflowResolver = new FakeProjectLocationResolver
+    {
+        ResolveFunc = text => Task.FromResult<ProjectCoordinates?>(new ProjectCoordinates(38.1, -85.5, "Eastern Standard Time"))
+    };
+    var locationWorkflow = new ProjectLocationResolutionWorkflow(locationWorkflowResolver);
+    var cachedOutcome = await locationWorkflow.ResolveAsync(temperatureProject, temperatureProject.LocationText, CancellationToken.None);
+    Assert(cachedOutcome.IsResolved && cachedOutcome.UsedCachedCoordinates, "saved project coordinates skip geocoding");
+    Assert(locationWorkflowResolver.CallCount == 0, "cached project coordinates avoid resolver calls");
+    var resolvedOutcome = await locationWorkflow.ResolveAsync(temperatureProject, "40208", CancellationToken.None);
+    Assert(resolvedOutcome.IsResolved && resolvedOutcome.Coordinates is not null, "new location text resolves into coordinates");
+    Assert(locationWorkflowResolver.CallCount == 1, "new location text calls the resolver");
+    locationWorkflowResolver.ResolveFunc = _ => Task.FromResult<ProjectCoordinates?>(null);
+    var unresolvedOutcome = await locationWorkflow.ResolveAsync(temperatureProject, "Unknown Place", CancellationToken.None);
+    Assert(!unresolvedOutcome.IsResolved, "unresolved project location remains gracefully unavailable");
+
+    var currentTemperatureService = new FakeProjectTemperatureService
+    {
+        CurrentResultFactory = _ => Task.FromResult(TemperatureLookupResult.Success(84.4))
+    };
+    var currentTemperatureSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        string.Empty,
+        new DateTime(2026, 8, 10),
+        isNewReport: true,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        currentTemperatureService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    await currentTemperatureSession.InitializeAsync();
+    Assert(currentTemperatureSession.AutoEnabled, "new report auto temperature follows the default setting");
+    Assert(currentTemperatureSession.TemperatureText == "84", "current temperature lookup rounds to a whole Fahrenheit degree");
+    Assert(currentTemperatureService.CurrentCallCount == 1, "new report current-day lookup uses the current-temperature provider");
+
+    var finalTemperatureSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        "86",
+        new DateTime(2026, 8, 10),
+        isNewReport: false,
+        isFinalReport: true,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        currentTemperatureService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    await finalTemperatureSession.InitializeAsync();
+    Assert(!finalTemperatureSession.AutoEnabled, "final reports open with auto temperature disabled");
+    Assert(finalTemperatureSession.TemperatureText == "86", "final reports keep the existing stored temperature until the user enables auto");
+
+    var historicalTemperatureService = new FakeProjectTemperatureService
+    {
+        HistoricalResultFactory = (_, _, startHour, endHour) =>
+            Task.FromResult(startHour == 7 && endHour == 17
+                ? HistoricalTemperatureAverager.AverageFahrenheit([74, 76, 79, 82, 84, 86, 87, 86, 84, 82, 80])
+                : TemperatureLookupResult.Failure("bad hours"))
+    };
+    var historicalTemperatureSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        string.Empty,
+        new DateTime(2026, 8, 9),
+        isNewReport: true,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        historicalTemperatureService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    await historicalTemperatureSession.InitializeAsync();
+    Assert(historicalTemperatureSession.TemperatureText == "82", "past-date lookup uses the configured daytime average");
+    Assert(historicalTemperatureService.HistoricalCallCount == 1, "past-date lookup uses the historical temperature provider");
+
+    var failureTemperatureService = new FakeProjectTemperatureService
+    {
+        CurrentResultFactory = _ => Task.FromResult(TemperatureLookupResult.Failure("Temperature lookup unavailable. Enter temperature manually."))
+    };
+    var failureTemperatureSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        "90",
+        new DateTime(2026, 8, 10),
+        isNewReport: true,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        failureTemperatureService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    await failureTemperatureSession.InitializeAsync();
+    Assert(failureTemperatureSession.TemperatureText == "90", "failed lookup leaves the existing temperature unchanged");
+    Assert(failureTemperatureSession.HasStatusMessage, "failed lookup surfaces a non-blocking manual-entry message");
+
+    var futureTemperatureService = new FakeProjectTemperatureService
+    {
+        CurrentResultFactory = _ => Task.FromResult(TemperatureLookupResult.Success(75))
+    };
+    var futureTemperatureSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        "91",
+        new DateTime(2026, 8, 11),
+        isNewReport: true,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        futureTemperatureService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    await futureTemperatureSession.InitializeAsync();
+    Assert(futureTemperatureSession.TemperatureText == "91", "future-dated reports do not auto-populate temperature");
+    Assert(futureTemperatureSession.HasStatusMessage, "future-dated reports explain that auto temperature is only for today and past dates");
+
+    var manualOverrideTaskSource = new TaskCompletionSource<TemperatureLookupResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var manualOverrideService = new FakeProjectTemperatureService
+    {
+        CurrentResultFactory = _ => manualOverrideTaskSource.Task
+    };
+    var manualOverrideSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        string.Empty,
+        new DateTime(2026, 8, 10),
+        isNewReport: true,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        manualOverrideService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    var manualInitializeTask = manualOverrideSession.InitializeAsync();
+    manualOverrideSession.ApplyManualTemperatureOverride("86");
+    manualOverrideTaskSource.SetResult(TemperatureLookupResult.Success(84));
+    await manualInitializeTask;
+    Assert(manualOverrideSession.TemperatureText == "86", "manual temperature override wins over a delayed lookup");
+    Assert(!manualOverrideSession.AutoEnabled, "manual temperature override disables auto for the editor session");
+
+    var raceDateA = new DateTime(2026, 8, 8);
+    var raceDateB = new DateTime(2026, 8, 9);
+    var raceTemperatureService = new FakeProjectTemperatureService();
+    raceTemperatureService.SetHistoricalPendingResult(raceDateA, new TaskCompletionSource<TemperatureLookupResult>(TaskCreationOptions.RunContinuationsAsynchronously));
+    raceTemperatureService.SetHistoricalPendingResult(raceDateB, new TaskCompletionSource<TemperatureLookupResult>(TaskCreationOptions.RunContinuationsAsynchronously));
+    var raceSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        string.Empty,
+        raceDateA,
+        isNewReport: false,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        raceTemperatureService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    var dateATask = raceSession.SetAutoEnabledAsync(true, raceDateA);
+    var dateBTask = raceSession.UpdateDateAsync(raceDateB);
+    raceTemperatureService.ResolveHistorical(raceDateB, TemperatureLookupResult.Success(83));
+    raceTemperatureService.ResolveHistorical(raceDateA, TemperatureLookupResult.Success(77));
+    await Task.WhenAll(dateATask, dateBTask);
+    Assert(raceSession.TemperatureText == "83", "only the latest date-change lookup result is applied");
 
     Console.WriteLine("\n== Project readiness and dashboard ==");
     var readinessTemplatePath = Path.Combine(root, "templates", "CEI_Base_Template_Refined.docx");
@@ -2320,6 +2527,68 @@ static void Assert(bool condition, string message)
     }
 
     Console.WriteLine($"  ok: {message}");
+}
+
+file sealed class FakeProjectLocationResolver : IProjectLocationResolver
+{
+    public int CallCount { get; private set; }
+
+    public Func<string, Task<ProjectCoordinates?>> ResolveFunc { get; set; }
+        = _ => Task.FromResult<ProjectCoordinates?>(null);
+
+    public Task<ProjectCoordinates?> ResolveAsync(string locationText, CancellationToken cancellationToken)
+    {
+        CallCount++;
+        return ResolveFunc(locationText);
+    }
+}
+
+file sealed class FakeProjectTemperatureService : IProjectTemperatureService
+{
+    private readonly Dictionary<DateTime, TaskCompletionSource<TemperatureLookupResult>> _historicalPendingResults = new();
+
+    public int CurrentCallCount { get; private set; }
+
+    public int HistoricalCallCount { get; private set; }
+
+    public Func<ProjectCoordinates, Task<TemperatureLookupResult>> CurrentResultFactory { get; set; }
+        = _ => Task.FromResult(TemperatureLookupResult.Failure("not configured"));
+
+    public Func<ProjectCoordinates, DateTime, int, int, Task<TemperatureLookupResult>> HistoricalResultFactory { get; set; }
+        = (_, _, _, _) => Task.FromResult(TemperatureLookupResult.Failure("not configured"));
+
+    public Task<TemperatureLookupResult> GetCurrentTemperatureAsync(ProjectCoordinates coordinates, CancellationToken cancellationToken)
+    {
+        CurrentCallCount++;
+        return CurrentResultFactory(coordinates);
+    }
+
+    public Task<TemperatureLookupResult> GetHistoricalDaytimeAverageAsync(
+        ProjectCoordinates coordinates,
+        DateTime date,
+        int startHour,
+        int endHour,
+        CancellationToken cancellationToken)
+    {
+        HistoricalCallCount++;
+        if (_historicalPendingResults.TryGetValue(date.Date, out var pending))
+        {
+            return pending.Task;
+        }
+
+        return HistoricalResultFactory(coordinates, date.Date, startHour, endHour);
+    }
+
+    public void SetHistoricalPendingResult(DateTime date, TaskCompletionSource<TemperatureLookupResult> taskSource)
+        => _historicalPendingResults[date.Date] = taskSource;
+
+    public void ResolveHistorical(DateTime date, TemperatureLookupResult result)
+    {
+        if (_historicalPendingResults.TryGetValue(date.Date, out var pending))
+        {
+            pending.TrySetResult(result);
+        }
+    }
 }
 
 file sealed class TestHistoricalParser : IHistoricalReportParser
