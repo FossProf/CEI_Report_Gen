@@ -630,10 +630,11 @@ public partial class ReportEditorWindow : Window
     private void HandleTemperatureAssistanceFailure(Exception ex)
     {
         System.Diagnostics.Trace.WriteLine($"Temperature assistance UI failure: {ex}");
+        _temperatureSession.DisableAutoAfterFailure();
         _isUpdatingTemperatureUi = true;
         try
         {
-            AutoTemperatureCheckBox.IsChecked = false;
+            AutoTemperatureCheckBox.IsChecked = _temperatureSession.AutoEnabled;
             TemperatureLookupStatusText.Text = "Temperature lookup unavailable. Enter temperature manually.";
             TemperatureLookupStatusText.Visibility = Visibility.Visible;
         }

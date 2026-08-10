@@ -134,6 +134,14 @@ public sealed class TemperatureAssistanceSession : ObservableObject, IDisposable
         StatusMessage = string.Empty;
     }
 
+    public void DisableAutoAfterFailure()
+    {
+        CancelLookup();
+        AutoEnabled = false;
+        IsLookupInProgress = false;
+        StatusMessage = "Temperature lookup unavailable. Enter temperature manually.";
+    }
+
     public void Dispose()
     {
         CancelLookup();

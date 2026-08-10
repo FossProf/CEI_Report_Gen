@@ -402,6 +402,23 @@ try
     Assert(!autoOffSession.HasStatusMessage, "turning Auto off clears temperature lookup status");
     Assert(autoOffService.CurrentCallCount == 1, "changing the date while Auto is off does not start another lookup");
 
+    var failureResetSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        "84",
+        new DateTime(2026, 8, 10),
+        isNewReport: true,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        new FakeProjectTemperatureService(),
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    await failureResetSession.SetAutoEnabledAsync(false, new DateTime(2026, 8, 10));
+    await failureResetSession.SetAutoEnabledAsync(true, new DateTime(2026, 8, 10));
+    failureResetSession.DisableAutoAfterFailure();
+    await failureResetSession.UpdateDateAsync(new DateTime(2026, 8, 9));
+    Assert(!failureResetSession.AutoEnabled, "failure reset leaves auto disabled");
+    Assert(failureResetSession.TemperatureText == "84", "failure reset preserves the existing temperature text");
+    Assert(failureResetSession.StatusMessage == "Temperature lookup unavailable. Enter temperature manually.", "failure reset shows manual-entry guidance");
+
     var reenableResults = new Queue<TemperatureLookupResult>(
     [
         TemperatureLookupResult.Success(84),
