@@ -1299,6 +1299,10 @@ try
     Assert(rollbackProject.NextReportNumber == 1, "in-memory next report restored after rollback");
     var rollbackLoadedReport = ReportStore.LoadReport(rollbackProject, 1);
     Assert(rollbackLoadedReport is null || rollbackLoadedReport.Status != ReportStatus.Final, "report.json not left finalized after rollback");
+    var rollbackPhotosFolder = ProjectLayout.ReportPhotosFolder(rollbackProject, rollbackReport.Number);
+    Assert(!Directory.Exists(rollbackPhotosFolder), "failed finalization without a prior draft leaves no orphan stored photo folder");
+    Assert(!Directory.EnumerateFiles(ProjectLayout.ReportFolder(rollbackProject, rollbackReport.Number), "*SPIN Report #*.docx", SearchOption.TopDirectoryOnly).Any(),
+        "failed finalization without a prior draft leaves no finalized report artifacts behind");
 
     Console.WriteLine("\n== Historical report search-index import contract ==");
     var invalidImportFolder = Path.Combine(workspace, "historical_invalid_project");

@@ -75,7 +75,12 @@ public static class ReportGenerator
         var previousProjectJsonPath = project.FilePath;
         var previousReportJson = File.Exists(previousReportJsonPath) ? File.ReadAllBytes(previousReportJsonPath) : null;
         var previousProjectJson = File.Exists(previousProjectJsonPath) ? File.ReadAllBytes(previousProjectJsonPath) : null;
-        var previousStoredPhotoFileNames = savedReport.Photos.Select(photo => photo.StoredFileName).ToList();
+        var previouslyPersistedStoredPhotoFileNames = (existing?.Photos ?? [])
+            .Select(photo => photo.StoredFileName)
+            .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        List<string>? preRenameStoredPhotoFileNames = null;
         var stagedFinalPath = ProjectLayout.FinalizingReportPath(project, report);
         var rollbackFailures = new List<string>();
         var reportPersisted = false;
@@ -94,6 +99,7 @@ public static class ReportGenerator
             MaybeFail(previousReportJsonPath);
             ReportStore.SaveReport(project, savedReport);
             reportPersisted = true;
+            preRenameStoredPhotoFileNames = savedReport.Photos.Select(photo => photo.StoredFileName).ToList();
 
             ReportStore.RenameStoredPhotosForFinalization(project, savedReport);
             MaybeFail(previousReportJsonPath);
@@ -110,7 +116,16 @@ public static class ReportGenerator
         catch (Exception ex)
         {
             TryDeleteFile(stagedFinalPath, rollbackFailures);
-            TryRestoreStoredPhotos(project, savedReport, previousStoredPhotoFileNames, rollbackFailures);
+            if (preRenameStoredPhotoFileNames is not null)
+            {
+                TryRestoreStoredPhotos(project, savedReport, preRenameStoredPhotoFileNames, rollbackFailures);
+                TryCleanupUnpersistedStoredPhotos(
+                    project,
+                    report.Number,
+                    preRenameStoredPhotoFileNames,
+                    previouslyPersistedStoredPhotoFileNames,
+                    rollbackFailures);
+            }
 
             if (projectPersisted)
             {
@@ -226,6 +241,37 @@ public static class ReportGenerator
         catch (Exception ex)
         {
             rollbackFailures.Add($"stored photos: {ex.Message}");
+        }
+    }
+
+    private static void TryCleanupUnpersistedStoredPhotos(
+        Project project,
+        int reportNumber,
+        IReadOnlyList<string> attemptedStoredPhotoFileNames,
+        IReadOnlyCollection<string> previouslyPersistedStoredPhotoFileNames,
+        List<string> rollbackFailures)
+    {
+        try
+        {
+            var previouslyPersisted = previouslyPersistedStoredPhotoFileNames
+                .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var createdOnlyForThisAttempt = attemptedStoredPhotoFileNames
+                .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(fileName => !previouslyPersisted.Contains(fileName))
+                .ToList();
+
+            if (createdOnlyForThisAttempt.Count == 0)
+            {
+                return;
+            }
+
+            ReportStore.DeleteStoredPhotos(project, reportNumber, createdOnlyForThisAttempt);
+        }
+        catch (Exception ex)
+        {
+            rollbackFailures.Add($"stored photo cleanup: {ex.Message}");
         }
     }
 

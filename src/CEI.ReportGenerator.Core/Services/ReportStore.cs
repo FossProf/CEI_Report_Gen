@@ -441,6 +441,33 @@ public static class ReportStore
         return storedPath;
     }
 
+    public static void DeleteStoredPhotos(Project project, int reportNumber, IEnumerable<string> storedFileNames)
+    {
+        var photosFolder = ProjectLayout.ReportPhotosFolder(project, reportNumber);
+        if (!Directory.Exists(photosFolder))
+        {
+            return;
+        }
+
+        foreach (var storedFileName in storedFileNames
+            .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+            .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var validatedFileName = ValidateStoredFileName(storedFileName);
+            var storedPath = Path.Combine(photosFolder, validatedFileName);
+            EnsureWithinFolder(photosFolder, storedPath);
+            if (File.Exists(storedPath))
+            {
+                File.Delete(storedPath);
+            }
+        }
+
+        if (!Directory.EnumerateFileSystemEntries(photosFolder).Any())
+        {
+            Directory.Delete(photosFolder);
+        }
+    }
+
     public static string ResolvePhotoSourcePath(Project project, InspectionReport report, Photo photo)
     {
         if (!string.IsNullOrEmpty(photo.SourcePath) && File.Exists(photo.SourcePath))
