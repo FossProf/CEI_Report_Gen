@@ -88,7 +88,9 @@ These components form the current protected baseline and should only change for 
 2. The scanner delegates each file to `IHistoricalReportParser`.
 3. Parser output is wrapped into `HistoricalScanResult` entries.
 4. The full scan is returned as one `HistoricalScanSession`.
-5. Future importer slices will pass that session into review and then commit workflows.
+5. `HistoricalReviewSession` wraps that scan into editable `HistoricalReviewItem` entries.
+6. The review UI binds a working copy per report and never mutates the original parse request.
+7. Future importer slices will consume only review-approved items during commit workflows.
 
 ### Release Flow
 
@@ -123,3 +125,14 @@ HistoricalDocumentParser
 ```
 
 `HistoricalScanSession` is now the canonical unit of work for importer progress between slices. The current WPF scanner window keeps only the current session in memory and does not persist session history yet.
+
+## Importer Review Boundary
+
+Slice 6C adds a deliberate boundary between parsing and import commit:
+
+- `HistoricalDocumentParser` produces deterministic field extractions, confidence, source provenance, and conflict candidates.
+- `HistoricalReviewItem` preserves both `OriginalRequest` and editable `WorkingRequest`.
+- `HistoricalReviewValidator` is the gate for moving an item into `Ready`.
+- `HistoricalReviewSession` provides review-state counts for the UI summary and filters.
+
+This boundary is intentionally review-only. It does not call `HistoricalReportImportService.Import`, does not select a destination project, and does not persist importer session state yet.

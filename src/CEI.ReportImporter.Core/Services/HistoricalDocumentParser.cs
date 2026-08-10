@@ -9,18 +9,6 @@ namespace CEI.ReportImporter.Core.Services;
 
 public sealed class HistoricalDocumentParser : IHistoricalReportParser
 {
-    private static readonly string[] SectionOrder =
-    {
-        "Location(s) Inspected",
-        "Cornerstone Inspector(s)",
-        "Personnel On Site",
-        "Description and Location(s) of Work Inspected",
-        "Drawing Sheets and Sections Related to This Work",
-        "General Observations / Remarks",
-        "Discrepancies and Direction Given",
-        "Observations on Correction of Discrepancies Noted in Previous Inspections"
-    };
-
     private static readonly Dictionary<string, string> SectionFieldMap = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Location(s) Inspected"] = "Locations",
@@ -83,45 +71,55 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
                 .Where(text => !string.IsNullOrWhiteSpace(text))
                 .ToList();
 
-            var reportNumberCandidates = new HashSet<int>();
+            var reportNumberCandidates = new List<DetectedFieldValue<int>>();
             foreach (var paragraph in allParagraphs)
             {
                 foreach (Match match in ReportNumberRegex.Matches(paragraph))
                 {
                     if (int.TryParse(match.Groups["number"].Value, out var number))
                     {
-                        reportNumberCandidates.Add(number);
+                        reportNumberCandidates.Add(new DetectedFieldValue<int>(number, "Document heading"));
                     }
                 }
             }
 
-            var documentReportNumber = reportNumberCandidates.Count == 1
-                ? reportNumberCandidates.Single()
+            var distinctDocumentReportNumbers = reportNumberCandidates
+                .Select(candidate => candidate.Value)
+                .Distinct()
+                .ToList();
+
+            var documentReportNumber = distinctDocumentReportNumbers.Count == 1
+                ? distinctDocumentReportNumbers[0]
                 : (int?)null;
-            if (reportNumberCandidates.Count > 1)
+            if (distinctDocumentReportNumbers.Count > 1)
             {
                 warnings.Add("Multiple report numbers were detected in the document.");
             }
 
-            var documentDate = ParseDate(FindValue(tableValues, "Inspection Date"));
-            var projectName = FindValue(tableValues, "Project Name");
-            var temperature = FindValue(tableValues, "Temperature");
-            var weather = FindValue(tableValues, "Weather");
-            var locations = GetValue("Locations", sectionValues, tableValues);
-            var inspectors = GetValue("Inspectors", sectionValues, tableValues);
-            var personnel = GetValue("PersonnelOnSite", sectionValues, tableValues);
-            var description = GetValue("DescriptionOfWork", sectionValues, tableValues);
-            var drawings = GetValue("DrawingsReviewed", sectionValues, tableValues);
-            var observations = GetValue("Observations", sectionValues, tableValues);
-            var newDiscrepancies = GetValue("NewDiscrepancies", sectionValues, tableValues);
-            var previousDiscrepancies = GetValue("PreviousDiscrepancies", sectionValues, tableValues);
+            var documentDateValue = TryGetValue(tableValues, "Inspection Date");
+            var documentProjectNameValue = TryGetValue(tableValues, "Project Name");
+            var temperatureValue = TryGetValue(tableValues, "Temperature");
+            var weatherValue = TryGetValue(tableValues, "Weather");
+            var locationsValue = GetValue("Locations", sectionValues, tableValues);
+            var inspectorsValue = GetValue("Inspectors", sectionValues, tableValues);
+            var personnelValue = GetValue("PersonnelOnSite", sectionValues, tableValues);
+            var descriptionValue = GetValue("DescriptionOfWork", sectionValues, tableValues);
+            var drawingsValue = GetValue("DrawingsReviewed", sectionValues, tableValues);
+            var observationsValue = GetValue("Observations", sectionValues, tableValues);
+            var newDiscrepanciesValue = GetValue("NewDiscrepancies", sectionValues, tableValues);
+            var previousDiscrepanciesValue = GetValue("PreviousDiscrepancies", sectionValues, tableValues);
 
-            if (string.IsNullOrWhiteSpace(weather))
+            var documentDate = ParseDateValue(documentDateValue);
+            var reportNumberExtraction = BuildReportNumberExtraction(filenameInfo.ReportNumber, documentReportNumber, reportNumberCandidates);
+            var dateExtraction = BuildDateExtraction(filenameInfo.Date, documentDate, documentDateValue);
+            var projectNameExtraction = BuildProjectNameExtraction(documentProjectNameValue, filenameInfo.ProjectName);
+
+            if (string.IsNullOrWhiteSpace(weatherValue.Value))
             {
                 warnings.Add("Missing weather.");
             }
 
-            if (string.IsNullOrWhiteSpace(observations))
+            if (string.IsNullOrWhiteSpace(observationsValue.Value))
             {
                 warnings.Add("Missing observations.");
             }
@@ -136,48 +134,50 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
                 warnings.Add($"Filename/document mismatch for inspection date: filename {filenameInfo.Date:yyyy-MM-dd}, document {documentDate:yyyy-MM-dd}.");
             }
 
-            var resolvedReportNumber = documentReportNumber ?? filenameInfo.ReportNumber;
-            var resolvedDate = documentDate ?? filenameInfo.Date;
-            var resolvedProjectName = !string.IsNullOrWhiteSpace(projectName) ? projectName : filenameInfo.ProjectName;
+            var resolvedReportNumber = reportNumberExtraction.Value;
+            var resolvedDate = dateExtraction.Value;
+            var resolvedProjectName = !string.IsNullOrWhiteSpace(projectNameExtraction.Value)
+                ? projectNameExtraction.Value
+                : filenameInfo.ProjectName;
 
             if (resolvedReportNumber is null || resolvedDate is null)
             {
                 return Failed(filePath, "The document does not contain the minimum CEI report identity fields.", warnings);
             }
 
-            var fieldConfidence = BuildFieldConfidence(
-                documentReportNumber,
-                filenameInfo.ReportNumber,
-                documentDate,
-                filenameInfo.Date,
-                projectName,
-                filenameInfo.ProjectName,
-                temperature,
-                weather,
-                locations,
-                inspectors,
-                personnel,
-                description,
-                drawings,
-                observations,
-                newDiscrepancies,
-                previousDiscrepancies);
+            var fieldExtractions = new HistoricalFieldExtractions
+            {
+                ReportNumber = reportNumberExtraction,
+                InspectionDate = dateExtraction,
+                Temperature = BuildTextExtraction(temperatureValue, isRequired: false),
+                Weather = BuildTextExtraction(weatherValue, isRequired: false),
+                Locations = BuildTextExtraction(locationsValue, isRequired: true),
+                Inspectors = BuildTextExtraction(inspectorsValue, isRequired: true),
+                PersonnelOnSite = BuildTextExtraction(personnelValue, isRequired: true),
+                DescriptionOfWork = BuildTextExtraction(descriptionValue, isRequired: true),
+                DrawingsReviewed = BuildTextExtraction(drawingsValue, isRequired: true),
+                Observations = BuildTextExtraction(observationsValue, isRequired: true),
+                NewDiscrepancies = BuildTextExtraction(newDiscrepanciesValue, isRequired: false),
+                PreviousDiscrepancies = BuildTextExtraction(previousDiscrepanciesValue, isRequired: false)
+            };
+
+            var fieldConfidence = BuildFieldConfidence(fieldExtractions, projectNameExtraction);
             var overallConfidence = BuildOverallConfidence(fieldConfidence, warnings);
 
             var request = new HistoricalReportImportRequest
             {
                 Number = resolvedReportNumber.Value,
                 Date = resolvedDate.Value,
-                Temperature = temperature,
-                Weather = weather,
-                Locations = locations,
-                Inspectors = inspectors,
-                PersonnelOnSite = personnel,
-                DescriptionOfWork = description,
-                DrawingsReviewed = drawings,
-                Observations = observations,
-                NewDiscrepancies = newDiscrepancies,
-                PreviousDiscrepancies = previousDiscrepancies,
+                Temperature = temperatureValue.Value,
+                Weather = weatherValue.Value,
+                Locations = locationsValue.Value,
+                Inspectors = inspectorsValue.Value,
+                PersonnelOnSite = personnelValue.Value,
+                DescriptionOfWork = descriptionValue.Value,
+                DrawingsReviewed = drawingsValue.Value,
+                Observations = observationsValue.Value,
+                NewDiscrepancies = newDiscrepanciesValue.Value,
+                PreviousDiscrepancies = previousDiscrepanciesValue.Value,
                 SourceDocumentPath = filePath,
                 ParserProfile = HistoricalReportImportService.DefaultParserProfile,
                 Warnings = warnings
@@ -195,6 +195,7 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
                 ParserProfile = HistoricalReportImportService.DefaultParserProfile,
                 OverallConfidence = overallConfidence,
                 FieldConfidence = fieldConfidence,
+                FieldExtractions = fieldExtractions,
                 Request = request,
                 ProjectName = resolvedProjectName,
                 ReportNumber = resolvedReportNumber,
@@ -217,13 +218,14 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
             ParserProfile = HistoricalReportImportService.DefaultParserProfile,
             OverallConfidence = HistoricalConfidenceLevel.Low,
             FieldConfidence = new HistoricalFieldConfidence(),
+            FieldExtractions = new HistoricalFieldExtractions(),
             Warnings = warnings is null ? Array.Empty<string>() : warnings.ToList(),
             FailureMessage = message
         };
 
-    private static Dictionary<string, string> ExtractTableValues(Body body)
+    private static Dictionary<string, SourcedText> ExtractTableValues(Body body)
     {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var values = new Dictionary<string, SourcedText>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var row in body.Descendants<TableRow>())
         {
@@ -244,21 +246,21 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
                     continue;
                 }
 
-                values[mapped] = cells[i + 1];
+                values[mapped] = new SourcedText(cells[i + 1], $"Table field: {mapped}");
             }
         }
 
         return values;
     }
 
-    private static Dictionary<string, string> ExtractSectionValues(Body body)
+    private static Dictionary<string, SourcedText> ExtractSectionValues(Body body)
     {
         var paragraphs = body.Descendants<Paragraph>()
             .Select(p => NormalizeWhitespace(p.InnerText))
             .Where(text => !string.IsNullOrWhiteSpace(text))
             .ToList();
 
-        var sections = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var sections = new Dictionary<string, SourcedText>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < paragraphs.Count; i++)
         {
             if (!TryMatchSectionHeading(paragraphs[i], out var heading, out var inlineValue))
@@ -266,9 +268,12 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
                 continue;
             }
 
+            var mappedField = SectionFieldMap[heading];
+            var source = $"{heading} section";
+
             if (!string.IsNullOrWhiteSpace(inlineValue))
             {
-                sections[SectionFieldMap[heading]] = inlineValue;
+                sections[mappedField] = new SourcedText(inlineValue, source);
                 continue;
             }
 
@@ -298,7 +303,7 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
                 collected.Add(paragraphs[j]);
             }
 
-            sections[SectionFieldMap[heading]] = string.Join(Environment.NewLine, collected).Trim();
+            sections[mappedField] = new SourcedText(string.Join(Environment.NewLine, collected).Trim(), source);
         }
 
         return sections;
@@ -356,24 +361,24 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
         return false;
     }
 
-    private static string GetValue(string field, IReadOnlyDictionary<string, string> sections, IReadOnlyDictionary<string, string> tables)
-        => sections.TryGetValue(field, out var sectionValue) && !string.IsNullOrWhiteSpace(sectionValue)
+    private static SourcedText GetValue(string field, IReadOnlyDictionary<string, SourcedText> sections, IReadOnlyDictionary<string, SourcedText> tables)
+        => sections.TryGetValue(field, out var sectionValue) && !string.IsNullOrWhiteSpace(sectionValue.Value)
             ? sectionValue
             : tables.TryGetValue(field, out var tableValue)
                 ? tableValue
-                : string.Empty;
+                : SourcedText.Empty;
 
-    private static string FindValue(IReadOnlyDictionary<string, string> tables, string field)
-        => tables.TryGetValue(field, out var value) ? value : string.Empty;
+    private static SourcedText TryGetValue(IReadOnlyDictionary<string, SourcedText> tables, string field)
+        => tables.TryGetValue(field, out var value) ? value : SourcedText.Empty;
 
-    private static DateTime? ParseDate(string value)
+    private static DateTime? ParseDateValue(SourcedText value)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (string.IsNullOrWhiteSpace(value.Value))
         {
             return null;
         }
 
-        var cleaned = value;
+        var cleaned = value.Value;
         var semicolonIndex = cleaned.IndexOf(';');
         if (semicolonIndex >= 0)
         {
@@ -385,61 +390,240 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
             : null;
     }
 
-    private static HistoricalFieldConfidence BuildFieldConfidence(
-        int? documentReportNumber,
+    private static FieldExtraction<int?> BuildReportNumberExtraction(
         int? filenameReportNumber,
-        DateTime? documentDate,
-        DateTime? filenameDate,
-        string documentProjectName,
-        string filenameProjectName,
-        string temperature,
-        string weather,
-        string locations,
-        string inspectors,
-        string personnel,
-        string description,
-        string drawings,
-        string observations,
-        string newDiscrepancies,
-        string previousDiscrepancies)
-        => new()
-        {
-            ReportNumber = CompareIdentity(documentReportNumber.HasValue, filenameReportNumber.HasValue, documentReportNumber == filenameReportNumber),
-            Date = CompareIdentity(documentDate.HasValue, filenameDate.HasValue, documentDate?.Date == filenameDate?.Date),
-            ProjectName = CompareIdentity(!string.IsNullOrWhiteSpace(documentProjectName), !string.IsNullOrWhiteSpace(filenameProjectName),
-                string.Equals(documentProjectName, filenameProjectName, StringComparison.OrdinalIgnoreCase)),
-            Temperature = ConfidenceForOptional(temperature),
-            Weather = ConfidenceForOptional(weather),
-            Locations = ConfidenceForRequired(locations),
-            Inspectors = ConfidenceForRequired(inspectors),
-            PersonnelOnSite = ConfidenceForRequired(personnel),
-            DescriptionOfWork = ConfidenceForRequired(description),
-            DrawingsReviewed = ConfidenceForRequired(drawings),
-            Observations = ConfidenceForRequired(observations),
-            NewDiscrepancies = ConfidenceForOptional(newDiscrepancies),
-            PreviousDiscrepancies = ConfidenceForOptional(previousDiscrepancies)
-        };
-
-    private static HistoricalConfidenceLevel CompareIdentity(bool hasDocumentValue, bool hasFilenameValue, bool valuesMatch)
+        int? documentReportNumber,
+        IReadOnlyCollection<DetectedFieldValue<int>> documentCandidates)
     {
-        if (hasDocumentValue && hasFilenameValue)
+        var candidates = new List<DetectedFieldValue<int?>>();
+        if (filenameReportNumber is not null)
         {
-            return valuesMatch ? HistoricalConfidenceLevel.High : HistoricalConfidenceLevel.Medium;
+            candidates.Add(new DetectedFieldValue<int?>(filenameReportNumber.Value, "Filename"));
         }
 
-        if (hasDocumentValue || hasFilenameValue)
+        candidates.AddRange(documentCandidates.Select(candidate => new DetectedFieldValue<int?>(candidate.Value, candidate.Source)));
+
+        if (documentReportNumber is not null && filenameReportNumber is not null)
         {
-            return HistoricalConfidenceLevel.Medium;
+            if (documentReportNumber == filenameReportNumber)
+            {
+                return new FieldExtraction<int?>(
+                    documentReportNumber,
+                    ExtractionConfidence.High,
+                    "Filename + document heading",
+                    Array.Empty<string>(),
+                    candidates);
+            }
+
+            return new FieldExtraction<int?>(
+                documentReportNumber,
+                ExtractionConfidence.Low,
+                "Document heading",
+                ["Filename and document report numbers do not match."],
+                candidates);
         }
 
-        return HistoricalConfidenceLevel.Low;
+        if (documentReportNumber is not null)
+        {
+            return new FieldExtraction<int?>(
+                documentReportNumber,
+                ExtractionConfidence.High,
+                "Document heading",
+                Array.Empty<string>(),
+                candidates);
+        }
+
+        if (filenameReportNumber is not null)
+        {
+            return new FieldExtraction<int?>(
+                filenameReportNumber,
+                ExtractionConfidence.Medium,
+                "Filename",
+                ["Report number was inferred from the filename."],
+                candidates);
+        }
+
+        return new FieldExtraction<int?>(
+            null,
+            ExtractionConfidence.None,
+            "Not found",
+            ["Report number was not detected."],
+            candidates);
     }
 
-    private static HistoricalConfidenceLevel ConfidenceForRequired(string value)
-        => string.IsNullOrWhiteSpace(value) ? HistoricalConfidenceLevel.Low : HistoricalConfidenceLevel.High;
+    private static FieldExtraction<DateTime?> BuildDateExtraction(
+        DateTime? filenameDate,
+        DateTime? documentDate,
+        SourcedText documentDateValue)
+    {
+        var candidates = new List<DetectedFieldValue<DateTime?>>();
+        if (filenameDate is not null)
+        {
+            candidates.Add(new DetectedFieldValue<DateTime?>(filenameDate.Value.Date, "Filename"));
+        }
 
-    private static HistoricalConfidenceLevel ConfidenceForOptional(string value)
-        => string.IsNullOrWhiteSpace(value) ? HistoricalConfidenceLevel.Medium : HistoricalConfidenceLevel.High;
+        if (documentDate is not null)
+        {
+            candidates.Add(new DetectedFieldValue<DateTime?>(documentDate.Value.Date, documentDateValue.Source));
+        }
+
+        if (documentDate is not null && filenameDate is not null)
+        {
+            if (documentDate.Value.Date == filenameDate.Value.Date)
+            {
+                return new FieldExtraction<DateTime?>(
+                    documentDate.Value.Date,
+                    ExtractionConfidence.High,
+                    "Filename + inspection date field",
+                    Array.Empty<string>(),
+                    candidates);
+            }
+
+            return new FieldExtraction<DateTime?>(
+                documentDate.Value.Date,
+                ExtractionConfidence.Low,
+                documentDateValue.Source,
+                ["Filename and document inspection dates do not match."],
+                candidates);
+        }
+
+        if (documentDate is not null)
+        {
+            return new FieldExtraction<DateTime?>(
+                documentDate.Value.Date,
+                ExtractionConfidence.High,
+                documentDateValue.Source,
+                Array.Empty<string>(),
+                candidates);
+        }
+
+        if (filenameDate is not null)
+        {
+            return new FieldExtraction<DateTime?>(
+                filenameDate.Value.Date,
+                ExtractionConfidence.Medium,
+                "Filename",
+                ["Inspection date was inferred from the filename."],
+                candidates);
+        }
+
+        return new FieldExtraction<DateTime?>(
+            null,
+            ExtractionConfidence.None,
+            "Not found",
+            ["Inspection date was not detected."],
+            candidates);
+    }
+
+    private static FieldExtraction<string> BuildProjectNameExtraction(SourcedText documentProjectName, string filenameProjectName)
+    {
+        var candidates = new List<DetectedFieldValue<string>>();
+        if (!string.IsNullOrWhiteSpace(filenameProjectName))
+        {
+            candidates.Add(new DetectedFieldValue<string>(filenameProjectName, "Filename"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(documentProjectName.Value))
+        {
+            candidates.Add(new DetectedFieldValue<string>(documentProjectName.Value, documentProjectName.Source));
+        }
+
+        if (!string.IsNullOrWhiteSpace(documentProjectName.Value) && !string.IsNullOrWhiteSpace(filenameProjectName))
+        {
+            if (string.Equals(documentProjectName.Value, filenameProjectName, StringComparison.OrdinalIgnoreCase))
+            {
+                return new FieldExtraction<string>(
+                    documentProjectName.Value,
+                    ExtractionConfidence.High,
+                    "Filename + project name field",
+                    Array.Empty<string>(),
+                    candidates);
+            }
+
+            return new FieldExtraction<string>(
+                documentProjectName.Value,
+                ExtractionConfidence.Medium,
+                documentProjectName.Source,
+                ["Filename and document project names do not match exactly."],
+                candidates);
+        }
+
+        if (!string.IsNullOrWhiteSpace(documentProjectName.Value))
+        {
+            return new FieldExtraction<string>(
+                documentProjectName.Value,
+                ExtractionConfidence.High,
+                documentProjectName.Source,
+                Array.Empty<string>(),
+                candidates);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filenameProjectName))
+        {
+            return new FieldExtraction<string>(
+                filenameProjectName,
+                ExtractionConfidence.Medium,
+                "Filename",
+                ["Project name was inferred from the filename."],
+                candidates);
+        }
+
+        return new FieldExtraction<string>(
+            string.Empty,
+            ExtractionConfidence.None,
+            "Not found",
+            ["Project name was not detected."],
+            candidates);
+    }
+
+    private static FieldExtraction<string> BuildTextExtraction(SourcedText value, bool isRequired)
+    {
+        if (string.IsNullOrWhiteSpace(value.Value))
+        {
+            return new FieldExtraction<string>(
+                string.Empty,
+                ExtractionConfidence.None,
+                "Not found",
+                [isRequired ? "Required field was not detected." : "Optional field was not detected."],
+                Array.Empty<DetectedFieldValue<string>>());
+        }
+
+        return new FieldExtraction<string>(
+            value.Value,
+            ExtractionConfidence.High,
+            value.Source,
+            Array.Empty<string>(),
+            [new DetectedFieldValue<string>(value.Value, value.Source)]);
+    }
+
+    private static HistoricalFieldConfidence BuildFieldConfidence(
+        HistoricalFieldExtractions fieldExtractions,
+        FieldExtraction<string> projectNameExtraction)
+        => new()
+        {
+            ReportNumber = ToLegacyConfidence(fieldExtractions.ReportNumber.Confidence, optionalWhenMissing: false),
+            Date = ToLegacyConfidence(fieldExtractions.InspectionDate.Confidence, optionalWhenMissing: false),
+            ProjectName = ToLegacyConfidence(projectNameExtraction.Confidence, optionalWhenMissing: false),
+            Temperature = ToLegacyConfidence(fieldExtractions.Temperature.Confidence, optionalWhenMissing: true),
+            Weather = ToLegacyConfidence(fieldExtractions.Weather.Confidence, optionalWhenMissing: true),
+            Locations = ToLegacyConfidence(fieldExtractions.Locations.Confidence, optionalWhenMissing: false),
+            Inspectors = ToLegacyConfidence(fieldExtractions.Inspectors.Confidence, optionalWhenMissing: false),
+            PersonnelOnSite = ToLegacyConfidence(fieldExtractions.PersonnelOnSite.Confidence, optionalWhenMissing: false),
+            DescriptionOfWork = ToLegacyConfidence(fieldExtractions.DescriptionOfWork.Confidence, optionalWhenMissing: false),
+            DrawingsReviewed = ToLegacyConfidence(fieldExtractions.DrawingsReviewed.Confidence, optionalWhenMissing: false),
+            Observations = ToLegacyConfidence(fieldExtractions.Observations.Confidence, optionalWhenMissing: false),
+            NewDiscrepancies = ToLegacyConfidence(fieldExtractions.NewDiscrepancies.Confidence, optionalWhenMissing: true),
+            PreviousDiscrepancies = ToLegacyConfidence(fieldExtractions.PreviousDiscrepancies.Confidence, optionalWhenMissing: true)
+        };
+
+    private static HistoricalConfidenceLevel ToLegacyConfidence(ExtractionConfidence confidence, bool optionalWhenMissing)
+        => confidence switch
+        {
+            ExtractionConfidence.High => HistoricalConfidenceLevel.High,
+            ExtractionConfidence.Medium => HistoricalConfidenceLevel.Medium,
+            ExtractionConfidence.Low => HistoricalConfidenceLevel.Medium,
+            _ => optionalWhenMissing ? HistoricalConfidenceLevel.Medium : HistoricalConfidenceLevel.Low
+        };
 
     private static HistoricalConfidenceLevel BuildOverallConfidence(HistoricalFieldConfidence confidence, IReadOnlyCollection<string> warnings)
     {
@@ -461,7 +645,7 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
     {
         var cleaned = value
             .Replace(":", string.Empty, StringComparison.Ordinal)
-            .Replace("°", string.Empty, StringComparison.Ordinal)
+            .Replace("Â°", string.Empty, StringComparison.Ordinal)
             .Replace("(", " ", StringComparison.Ordinal)
             .Replace(")", " ", StringComparison.Ordinal)
             .Replace("/", " ", StringComparison.Ordinal);
@@ -479,4 +663,9 @@ public sealed class HistoricalDocumentParser : IHistoricalReportParser
                 .Replace("\r", " ", StringComparison.Ordinal)
                 .Replace("\n", " ", StringComparison.Ordinal)
                 .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private sealed record SourcedText(string Value, string Source)
+    {
+        public static SourcedText Empty { get; } = new(string.Empty, "Not found");
+    }
 }

@@ -16,6 +16,8 @@ public sealed class HistoricalReportParseResult
 
     public required HistoricalFieldConfidence FieldConfidence { get; init; }
 
+    public HistoricalFieldExtractions FieldExtractions { get; init; } = new();
+
     public HistoricalReportImportRequest? Request { get; init; }
 
     public string ProjectName { get; init; } = string.Empty;

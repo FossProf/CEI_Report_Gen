@@ -2,8 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="SPINgen Historical Report Importer"
-        Height="640"
-        Width="1080"
+        Height="860"
+        Width="1480"
+        MinHeight="760"
+        MinWidth="1280"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="16">
         <Grid.RowDefinitions>
@@ -14,63 +16,254 @@
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0"
-                   Text="Historical Report Scanner"
+                   Text="Historical Report Review Workspace"
                    FontSize="24"
                    FontWeight="SemiBold"
                    Margin="0,0,0,14"/>
 
-        <Grid Grid.Row="1" Margin="0,0,0,12">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+        <Border Grid.Row="1"
+                Padding="14"
+                CornerRadius="8"
+                Background="#FFF5F5F5"
+                BorderBrush="#FFD8D8D8"
+                BorderThickness="1"
+                Margin="0,0,0,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Source Folder:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBox x:Name="SourceFolderTextBox" Grid.Row="0" Grid.Column="1" Margin="0,0,10,0" MinWidth="420"/>
+                <Button Grid.Row="0" Grid.Column="2" Content="Browse..." Padding="12,6" Margin="0,0,10,0" Click="BrowseButton_Click"/>
+                <Button x:Name="OpenSourceFolderButton" Grid.Row="0" Grid.Column="3" Content="Open Folder" Padding="12,6" Margin="0,0,10,0" Click="OpenSourceFolderButton_Click"/>
+                <Button x:Name="OpenSourceDocumentButton" Grid.Row="0" Grid.Column="4" Content="Open Source Document" Padding="12,6" Margin="0,0,10,0" Click="OpenSourceDocumentButton_Click"/>
+                <Button x:Name="ScanButton" Grid.Row="0" Grid.Column="5" Content="Scan" Padding="18,6" Click="ScanButton_Click"/>
+
+                <StackPanel Grid.Row="1" Grid.ColumnSpan="6" Orientation="Horizontal" Margin="0,12,0,0">
+                    <CheckBox x:Name="IncludeSubfoldersCheckBox"
+                              Content="Include subfolders"
+                              VerticalAlignment="Center"
+                              Margin="0,0,20,0"/>
+                    <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="ReviewFilterComboBox"
+                              Width="180"
+                              SelectionChanged="ReviewFilterComboBox_SelectionChanged">
+                        <ComboBoxItem Content="All" IsSelected="True"/>
+                        <ComboBoxItem Content="Unreviewed"/>
+                        <ComboBoxItem Content="Needs Review"/>
+                        <ComboBoxItem Content="Ready"/>
+                        <ComboBoxItem Content="Excluded"/>
+                    </ComboBox>
+                    <TextBlock x:Name="SummaryTextBlock"
+                               Margin="20,0,0,0"
+                               Foreground="DimGray"
+                               VerticalAlignment="Center"
+                               Text="No scan has been run yet."/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="1.15*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="1.35*"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Source Folder:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <TextBox x:Name="SourceFolderTextBox" Grid.Row="0" Grid.Column="1" Margin="0,0,10,0" MinWidth="420"/>
-            <Button Grid.Row="0" Grid.Column="2" Content="Browse..." Padding="12,6" Margin="0,0,10,0" Click="BrowseButton_Click"/>
-            <Button x:Name="ScanButton" Grid.Row="0" Grid.Column="3" Content="Scan" Padding="18,6" Click="ScanButton_Click"/>
+            <Border Grid.Column="0"
+                    BorderBrush="#FFD8D8D8"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="10">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="Scan Results"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,10"/>
+                    <DataGrid x:Name="ResultsGrid"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              SelectionMode="Single"
+                              SelectionChanged="ResultsGrid_SelectionChanged"
+                              MouseDoubleClick="ResultsGrid_MouseDoubleClick">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Review State" Binding="{Binding ReviewStateText}" Width="120"/>
+                            <DataGridTextColumn Header="Filename" Binding="{Binding SourceFileName}" Width="220"/>
+                            <DataGridTextColumn Header="Report #" Binding="{Binding DisplayReportNumber}" Width="80"/>
+                            <DataGridTextColumn Header="Date" Binding="{Binding DisplayDate}" Width="110"/>
+                            <DataGridTextColumn Header="Confidence" Binding="{Binding OverallConfidence}" Width="90"/>
+                            <DataGridTextColumn Header="Warnings" Binding="{Binding WarningsSummary}" Width="*"/>
+                            <DataGridTextColumn Header="Changed" Binding="{Binding ChangedText}" Width="70"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
 
-            <CheckBox x:Name="IncludeSubfoldersCheckBox"
-                      Grid.Row="1"
-                      Grid.Column="1"
-                      Margin="0,10,0,0"
-                      Content="Include subfolders"/>
+            <Border Grid.Column="2"
+                    BorderBrush="#FFD8D8D8"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-            <TextBlock x:Name="SummaryTextBlock"
-                       Grid.Row="2"
-                       Grid.Column="1"
-                       Margin="0,10,0,0"
-                       Foreground="DimGray"
-                       Text="No scan has been run yet."/>
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="Selected Report Review"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"/>
+                        <TextBlock x:Name="SelectedReportSummaryTextBlock"
+                                   Margin="0,6,0,0"
+                                   Foreground="DimGray"
+                                   Text="Select a scanned report to review its extracted fields."/>
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1"
+                                  Margin="0,14,0,14"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <Border Background="#FFFFF8E1"
+                                    BorderBrush="#FFE6C36A"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="10"
+                                    Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="Warnings"
+                                               FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="WarningsTextBlock"
+                                               TextWrapping="Wrap"
+                                               Margin="0,6,0,0"
+                                               Text="No warnings."/>
+                                </StackPanel>
+                            </Border>
+
+                            <UniformGrid Columns="2" Margin="0,0,0,12">
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="Report Number"/>
+                                    <TextBox x:Name="ReportNumberTextBox"
+                                             TextChanged="EditableFieldChanged"/>
+                                    <TextBlock x:Name="ReportNumberMetaTextBlock"
+                                               Foreground="DimGray"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Margin="0,4,0,0"/>
+                                    <TextBlock x:Name="ReportNumberCandidatesTextBlock"
+                                               Foreground="DimGray"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="Inspection Date"/>
+                                    <DatePicker x:Name="InspectionDatePicker"
+                                                SelectedDateChanged="EditableDateChanged"/>
+                                    <TextBlock x:Name="InspectionDateMetaTextBlock"
+                                               Foreground="DimGray"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Margin="0,4,0,0"/>
+                                    <TextBlock x:Name="InspectionDateCandidatesTextBlock"
+                                               Foreground="DimGray"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </UniformGrid>
+
+                            <UniformGrid Columns="2" Margin="0,0,0,12">
+                                <StackPanel Margin="0,0,10,0">
+                                    <TextBlock Text="Weather"/>
+                                    <TextBox x:Name="WeatherTextBox" TextChanged="EditableFieldChanged"/>
+                                    <TextBlock x:Name="WeatherMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="Temperature"/>
+                                    <TextBox x:Name="TemperatureTextBox" TextChanged="EditableFieldChanged"/>
+                                    <TextBlock x:Name="TemperatureMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </UniformGrid>
+
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="Locations"/>
+                                <TextBox x:Name="LocationsTextBox" TextChanged="EditableFieldChanged" AcceptsReturn="True" TextWrapping="Wrap" Height="70"/>
+                                <TextBlock x:Name="LocationsMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="Inspectors"/>
+                                <TextBox x:Name="InspectorsTextBox" TextChanged="EditableFieldChanged" AcceptsReturn="True" TextWrapping="Wrap" Height="54"/>
+                                <TextBlock x:Name="InspectorsMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="Personnel On Site"/>
+                                <TextBox x:Name="PersonnelOnSiteTextBox" TextChanged="EditableFieldChanged" AcceptsReturn="True" TextWrapping="Wrap" Height="54"/>
+                                <TextBlock x:Name="PersonnelMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="Description Of Work"/>
+                                <TextBox x:Name="DescriptionOfWorkTextBox" TextChanged="EditableFieldChanged" AcceptsReturn="True" TextWrapping="Wrap" Height="80"/>
+                                <TextBlock x:Name="DescriptionMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="Drawings Reviewed"/>
+                                <TextBox x:Name="DrawingsReviewedTextBox" TextChanged="EditableFieldChanged" AcceptsReturn="True" TextWrapping="Wrap" Height="54"/>
+                                <TextBlock x:Name="DrawingsMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="Observations"/>
+                                <TextBox x:Name="ObservationsTextBox" TextChanged="EditableFieldChanged" AcceptsReturn="True" TextWrapping="Wrap" Height="90"/>
+                                <TextBlock x:Name="ObservationsMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel Margin="0,0,0,12">
+                                <TextBlock Text="New Discrepancies"/>
+                                <TextBox x:Name="NewDiscrepanciesTextBox" TextChanged="EditableFieldChanged" AcceptsReturn="True" TextWrapping="Wrap" Height="80"/>
+                                <TextBlock x:Name="NewDiscrepanciesMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel>
+                                <TextBlock Text="Previous Discrepancies"/>
+                                <TextBox x:Name="PreviousDiscrepanciesTextBox" TextChanged="EditableFieldChanged" AcceptsReturn="True" TextWrapping="Wrap" Height="80"/>
+                                <TextBlock x:Name="PreviousDiscrepanciesMetaTextBlock" Foreground="DimGray" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right">
+                        <Button x:Name="ReturnToReviewButton" Content="Review Again" Padding="12,6" Margin="0,0,8,0" Click="ReturnToReviewButton_Click"/>
+                        <Button x:Name="ResetChangesButton" Content="Reset Changes" Padding="12,6" Margin="0,0,8,0" Click="ResetChangesButton_Click"/>
+                        <Button x:Name="ExcludeButton" Content="Exclude" Padding="12,6" Margin="0,0,8,0" Click="ExcludeButton_Click"/>
+                        <Button x:Name="MarkReadyButton" Content="Mark Ready" Padding="12,6" Click="MarkReadyButton_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
-
-        <DataGrid x:Name="ResultsGrid"
-                  Grid.Row="2"
-                  AutoGenerateColumns="False"
-                  IsReadOnly="True"
-                  CanUserAddRows="False"
-                  MouseDoubleClick="ResultsGrid_MouseDoubleClick">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Status" Binding="{Binding ParseResult.StatusText}" Width="150"/>
-                <DataGridTextColumn Header="Filename" Binding="{Binding SourceFileName}" Width="280"/>
-                <DataGridTextColumn Header="Report #" Binding="{Binding ParseResult.ReportNumberText}" Width="90"/>
-                <DataGridTextColumn Header="Date" Binding="{Binding ParseResult.DateText}" Width="120"/>
-                <DataGridTextColumn Header="Project Name" Binding="{Binding ParseResult.ProjectName}" Width="240"/>
-                <DataGridTextColumn Header="Confidence" Binding="{Binding ParseResult.ConfidenceText}" Width="110"/>
-                <DataGridTextColumn Header="Warnings" Binding="{Binding ParseResult.WarningsText}" Width="*"/>
-            </DataGrid.Columns>
-        </DataGrid>
 
         <TextBlock Grid.Row="3"
                    Margin="0,12,0,0"
                    Foreground="DimGray"
-                   Text="This slice scans and parses historical reports only. It does not commit anything into a SPINgen project."/>
+                   Text="Slice 6C is review-only. It does not write report.json files or import anything into a SPINgen project."/>
     </Grid>
 </Window>

@@ -42,10 +42,33 @@ persisted to disk and do not commit reports into a SPINgen project.
 
 Review and correction UI
 
-- field-by-field review
-- correction before commit
-- collision visibility
-- import warnings display
+- two-pane review workspace
+- field-level confidence and provenance display
+- editable working copy before any import commit exists
+- reversible `Ready` / `Excluded` review states
+- in-memory-only review session with discard prompt on rescan
+- source document launch from the review pane
+
+## Current 6C Handoff
+
+```text
+HistoricalReportScanner
+  ->
+HistoricalScanSession
+  ->
+HistoricalReviewSession
+  ->
+HistoricalReviewItem[]
+  ->
+Future Import Commit Workflow
+```
+
+Slice 6C remains intentionally non-destructive:
+
+- no destination project is selected yet
+- no `report.json` files are written
+- no importer commit service is called
+- parse failures remain visible in the review list and can be excluded, but they do not yet support full manual reconstruction
 
 ## Slice 6D
 

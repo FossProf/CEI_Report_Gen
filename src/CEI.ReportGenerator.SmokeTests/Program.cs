@@ -1611,6 +1611,11 @@ try
     Assert(parsedImporterDocx.OverallConfidence == HistoricalConfidenceLevel.High, "historical parser returns high confidence for a clean generated report");
     Assert(parsedImporterDocx.FieldConfidence.ReportNumber == HistoricalConfidenceLevel.High, "historical parser marks report number confidence high when document and filename agree");
     Assert(parsedImporterDocx.FieldConfidence.Date == HistoricalConfidenceLevel.High, "historical parser marks date confidence high when document and filename agree");
+    Assert(parsedImporterDocx.FieldExtractions.ReportNumber.Confidence == ExtractionConfidence.High, "historical parser exposes high-confidence report number extraction metadata");
+    Assert(parsedImporterDocx.FieldExtractions.ReportNumber.Source.Contains("Filename", StringComparison.Ordinal), "historical parser records report number provenance");
+    Assert(parsedImporterDocx.FieldExtractions.InspectionDate.Confidence == ExtractionConfidence.High, "historical parser exposes high-confidence date extraction metadata");
+    Assert(parsedImporterDocx.FieldExtractions.Weather.Source.Contains("Weather", StringComparison.OrdinalIgnoreCase), "historical parser records weather field provenance");
+    Assert(parsedImporterDocx.FieldExtractions.Observations.Source.Contains("Observations", StringComparison.OrdinalIgnoreCase), "historical parser records observations section provenance");
 
     var longDateDocx = Path.Combine(workspace, "historical_long_date.docx");
     File.Copy(finalizedImporterDocx, longDateDocx, overwrite: true);
@@ -1629,6 +1634,9 @@ try
     Assert(mismatchParsed.FieldConfidence.ReportNumber == HistoricalConfidenceLevel.Medium, "historical parser lowers report number confidence on mismatch");
     Assert(mismatchParsed.FieldConfidence.Date == HistoricalConfidenceLevel.Medium, "historical parser lowers date confidence on mismatch");
     Assert(mismatchParsed.OverallConfidence == HistoricalConfidenceLevel.Medium, "historical parser lowers overall confidence on filename/document mismatch");
+    Assert(mismatchParsed.FieldExtractions.ReportNumber.Confidence == ExtractionConfidence.Low, "historical parser exposes low-confidence report number extraction on mismatch");
+    Assert(mismatchParsed.FieldExtractions.ReportNumber.Candidates.Count >= 2, "historical parser preserves conflicting report number candidates");
+    Assert(mismatchParsed.FieldExtractions.InspectionDate.Confidence == ExtractionConfidence.Low, "historical parser exposes low-confidence date extraction on mismatch");
 
     var missingFieldsReport = MakeReport(importerProject, 217, 1, "Overcast", photoFiles);
     missingFieldsReport.Date = new DateTime(2026, 8, 7);
@@ -1644,6 +1652,8 @@ try
     Assert(missingFieldsParsed.Warnings.Any(w => w.Contains("Missing observations", StringComparison.OrdinalIgnoreCase)), "historical parser warns when observations are missing");
     Assert(missingFieldsParsed.FieldConfidence.Weather == HistoricalConfidenceLevel.Medium, "historical parser assigns medium confidence to missing optional weather");
     Assert(missingFieldsParsed.FieldConfidence.Observations == HistoricalConfidenceLevel.Low, "historical parser assigns low confidence to missing required observations");
+    Assert(missingFieldsParsed.FieldExtractions.Weather.Confidence == ExtractionConfidence.None, "historical parser exposes missing optional weather as no extraction confidence");
+    Assert(missingFieldsParsed.FieldExtractions.Observations.Confidence == ExtractionConfidence.None, "historical parser exposes missing required observations as no extraction confidence");
 
     var invalidDocx = Path.Combine(workspace, "historical_invalid.docx");
     File.WriteAllText(invalidDocx, "not a real docx");
@@ -1724,6 +1734,57 @@ try
     Assert(fakeParser.LastParsedPath == fakeDocx, "historical scanner passes the discovered file path into the injected parser");
     Assert(fakeSession.ParserProfile == fakeParser.ProfileName, "historical scan session parser profile comes from the injected parser");
     Assert(fakeSession.Results.Count == 1 && fakeSession.Results[0].ParseSucceeded, "historical scanner produces results through the injected parser");
+
+    var reviewSession = new HistoricalReviewSession(recursiveScan);
+    Assert(reviewSession.TotalCount == recursiveScan.Results.Count, "historical review session wraps every scan result");
+    Assert(reviewSession.UnreviewedCount >= 1, "historical review session keeps clean parses unreviewed until a user marks them ready");
+    Assert(reviewSession.NeedsReviewCount >= 1, "historical review session sends warning or failed parses to needs-review");
+
+    var reviewItem = reviewSession.Items.First(item => item.ParseSucceeded);
+    Assert(reviewItem.OriginalRequest is not null && reviewItem.WorkingRequest is not null, "historical review item keeps both original and working requests");
+    Assert(reviewItem.ReviewState == HistoricalReviewState.Unreviewed, "historical review item starts clean parses as unreviewed");
+    var editableWorkingRequest = reviewItem.WorkingRequest ?? throw new InvalidOperationException("Review item should have a working request after a successful parse.");
+    reviewItem.UpdateWorkingRequest(editableWorkingRequest with { Weather = "Manual override weather" });
+    Assert(reviewItem.HasUserChanges, "historical review item tracks manual corrections");
+    Assert(reviewItem.WorkingRequest!.Weather == "Manual override weather", "historical review item updates the editable working request");
+    Assert(reviewItem.OriginalRequest!.Weather != reviewItem.WorkingRequest.Weather, "historical review item preserves the original parsed request");
+    Assert(reviewItem.TryMarkReady(new HistoricalReviewValidator(), out var readyMessages), "historical review item can be marked ready after validation");
+    Assert(readyMessages.Count == 0, "historical review ready validation succeeds without messages for a valid item");
+    Assert(reviewItem.ReviewState == HistoricalReviewState.Ready, "historical review item transitions into ready state");
+    reviewItem.MarkExcluded();
+    Assert(reviewItem.ReviewState == HistoricalReviewState.Excluded, "historical review item can be excluded without deleting source files");
+    reviewItem.ReturnToReview();
+    Assert(reviewItem.ReviewState == reviewItem.InitialReviewState, "historical review item can be returned from excluded to the initial review state");
+    reviewItem.ResetChanges();
+    Assert(!reviewItem.HasUserChanges, "historical review reset clears manual correction tracking");
+    Assert(reviewItem.WorkingRequest == reviewItem.OriginalRequest, "historical review reset restores the original working request");
+
+    var invalidReviewResult = new HistoricalScanResult
+    {
+        SourceFilePath = "C:\\temp\\invalid-report.docx",
+        SourceFileName = "invalid-report.docx",
+        ParseResult = new HistoricalReportParseResult
+        {
+            Status = HistoricalReportParseStatus.ParsedWithWarnings,
+            FilePath = "C:\\temp\\invalid-report.docx",
+            FileName = "invalid-report.docx",
+            ParserProfile = HistoricalReportImportService.DefaultParserProfile,
+            OverallConfidence = HistoricalConfidenceLevel.Medium,
+            FieldConfidence = new HistoricalFieldConfidence(),
+            FieldExtractions = new HistoricalFieldExtractions(),
+            Request = new HistoricalReportImportRequest
+            {
+                Number = 0,
+                Date = default,
+                SourceDocumentPath = "C:\\temp\\invalid-report.docx",
+                ParserProfile = HistoricalReportImportService.DefaultParserProfile
+            },
+            Warnings = ["Needs manual correction."]
+        }
+    };
+    var invalidReviewItem = new HistoricalReviewItem(invalidReviewResult);
+    Assert(!invalidReviewItem.TryMarkReady(new HistoricalReviewValidator(), out var invalidReviewMessages), "historical review validator blocks ready state for invalid corrected data");
+    Assert(invalidReviewMessages.Count >= 2, "historical review validator returns concrete validation messages");
 
     Console.WriteLine("\n== Repository hygiene rules present ==");
     var gitIgnore = File.ReadAllText(Path.Combine(root, ".gitignore"));
