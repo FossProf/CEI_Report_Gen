@@ -50,13 +50,16 @@ public sealed class OpenMeteoProjectLocationResolver(HttpClient httpClient) : IP
 
     private sealed class GeocodingResponse
     {
+        [JsonPropertyName("results")]
         public List<GeocodingResult>? Results { get; set; }
     }
 
     private sealed class GeocodingResult
     {
+        [JsonPropertyName("latitude")]
         public double Latitude { get; set; }
 
+        [JsonPropertyName("longitude")]
         public double Longitude { get; set; }
 
         [JsonPropertyName("timezone")]

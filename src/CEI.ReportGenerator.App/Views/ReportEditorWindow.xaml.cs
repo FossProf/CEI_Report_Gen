@@ -20,6 +20,7 @@ public partial class ReportEditorWindow : Window
     private readonly InspectionReport _report;
     private readonly bool _isFinalReport;
     private readonly TemperatureAssistanceSession _temperatureSession;
+    private bool _isInitializingTemperatureUi = true;
     private bool _isUpdatingTemperatureUi;
 
     public ReportEditorWindow(Project project, InspectionReport report, bool isNew)
@@ -38,8 +39,6 @@ public partial class ReportEditorWindow : Window
         ReportNumberBox.Text = report.Number.ToString();
         ReportNumberBox.IsEnabled = isNew;
 
-        DatePicker.SelectedDate = report.Date;
-        TemperatureBox.Text = report.Temperature;
         _temperatureSession = new TemperatureAssistanceSession(
             project,
             report.Temperature,
@@ -49,6 +48,9 @@ public partial class ReportEditorWindow : Window
             App.CurrentApp.Settings.TemperatureAssistance,
             App.CurrentApp.TemperatureService);
         _temperatureSession.PropertyChanged += TemperatureSession_PropertyChanged;
+
+        DatePicker.SelectedDate = report.Date;
+        TemperatureBox.Text = report.Temperature;
         WeatherCombo.ItemsSource = WeatherOptions.All;
         if (WeatherOptions.IsValid(report.Weather))
         {
@@ -80,7 +82,8 @@ public partial class ReportEditorWindow : Window
         UpdatePhotoEmptyState();
         ApplyLifecyclePresentation();
         ApplyTemperatureAssistancePresentation();
-        Loaded += async (_, _) => await _temperatureSession.InitializeAsync();
+        _isInitializingTemperatureUi = false;
+        Loaded += async (_, _) => await InitializeTemperatureAssistanceAsync();
         Closed += (_, _) => _temperatureSession.Dispose();
     }
 
@@ -515,30 +518,70 @@ public partial class ReportEditorWindow : Window
 
     private async void AutoTemperatureCheckBox_Checked(object sender, RoutedEventArgs e)
     {
-        await _temperatureSession.SetAutoEnabledAsync(true, DatePicker.SelectedDate ?? DateTime.Today);
-    }
-
-    private async void AutoTemperatureCheckBox_Unchecked(object sender, RoutedEventArgs e)
-    {
-        if (_isUpdatingTemperatureUi)
+        if (_isUpdatingTemperatureUi || _isInitializingTemperatureUi)
         {
             return;
         }
 
-        await _temperatureSession.SetAutoEnabledAsync(false, DatePicker.SelectedDate ?? DateTime.Today);
+        try
+        {
+            await _temperatureSession.SetAutoEnabledAsync(true, DatePicker.SelectedDate ?? DateTime.Today);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            HandleTemperatureAssistanceFailure(ex);
+        }
+    }
+
+    private async void AutoTemperatureCheckBox_Unchecked(object sender, RoutedEventArgs e)
+    {
+        if (_isUpdatingTemperatureUi || _isInitializingTemperatureUi)
+        {
+            return;
+        }
+
+        try
+        {
+            await _temperatureSession.SetAutoEnabledAsync(false, DatePicker.SelectedDate ?? DateTime.Today);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            HandleTemperatureAssistanceFailure(ex);
+        }
     }
 
     private async void DatePicker_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_isUpdatingTemperatureUi || _isInitializingTemperatureUi)
+        {
+            return;
+        }
+
         if (DatePicker.SelectedDate is { } selectedDate)
         {
-            await _temperatureSession.UpdateDateAsync(selectedDate);
+            try
+            {
+                await _temperatureSession.UpdateDateAsync(selectedDate);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                HandleTemperatureAssistanceFailure(ex);
+            }
         }
     }
 
     private void TemperatureBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_isUpdatingTemperatureUi)
+        if (_isUpdatingTemperatureUi || _isInitializingTemperatureUi)
         {
             return;
         }
@@ -562,6 +605,37 @@ public partial class ReportEditorWindow : Window
             TemperatureLookupStatusText.Visibility = _temperatureSession.HasStatusMessage
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        }
+        finally
+        {
+            _isUpdatingTemperatureUi = false;
+        }
+    }
+
+    private async Task InitializeTemperatureAssistanceAsync()
+    {
+        try
+        {
+            await _temperatureSession.InitializeAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            HandleTemperatureAssistanceFailure(ex);
+        }
+    }
+
+    private void HandleTemperatureAssistanceFailure(Exception ex)
+    {
+        System.Diagnostics.Trace.WriteLine($"Temperature assistance UI failure: {ex}");
+        _isUpdatingTemperatureUi = true;
+        try
+        {
+            AutoTemperatureCheckBox.IsChecked = false;
+            TemperatureLookupStatusText.Text = "Temperature lookup unavailable. Enter temperature manually.";
+            TemperatureLookupStatusText.Visibility = Visibility.Visible;
         }
         finally
         {

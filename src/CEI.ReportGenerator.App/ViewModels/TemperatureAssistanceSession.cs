@@ -1,5 +1,6 @@
 using CEI.ReportGenerator.Core.Models;
 using CEI.ReportGenerator.Core.Services;
+using System.Diagnostics;
 
 namespace CEI.ReportGenerator.App.ViewModels;
 
@@ -98,6 +99,7 @@ public sealed class TemperatureAssistanceSession : ObservableObject, IDisposable
             CancelLookup();
             StatusMessage = string.Empty;
             IsLookupInProgress = false;
+            Trace.WriteLine("Temperature lookup cancelled because Auto was turned off.");
             return;
         }
 
@@ -142,7 +144,9 @@ public sealed class TemperatureAssistanceSession : ObservableObject, IDisposable
         CancelLookup();
         if (_project.Coordinates is not ProjectCoordinates coordinates)
         {
+            Trace.WriteLine("Temperature lookup unavailable because the project location is unresolved.");
             StatusMessage = "Temperature lookup unavailable until the project location is resolved.";
+            IsLookupInProgress = false;
             return;
         }
 
@@ -150,6 +154,7 @@ public sealed class TemperatureAssistanceSession : ObservableObject, IDisposable
         if (_selectedDate.Date > projectToday)
         {
             StatusMessage = "Automatic temperature is available for today and past dates.";
+            IsLookupInProgress = false;
             return;
         }
 
@@ -157,6 +162,7 @@ public sealed class TemperatureAssistanceSession : ObservableObject, IDisposable
         _lookupCancellation = new CancellationTokenSource();
         IsLookupInProgress = true;
         StatusMessage = "Looking up temperature...";
+        Trace.WriteLine($"Temperature lookup started for {_selectedDate:yyyy-MM-dd}.");
 
         try
         {
@@ -189,7 +195,16 @@ public sealed class TemperatureAssistanceSession : ObservableObject, IDisposable
         {
             if (requestVersion == _lookupVersion)
             {
+                Trace.WriteLine("Temperature lookup cancelled.");
                 StatusMessage = string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"Temperature lookup failed: {ex.Message}");
+            if (requestVersion == _lookupVersion && AutoEnabled)
+            {
+                StatusMessage = "Temperature lookup unavailable. Enter temperature manually.";
             }
         }
         finally

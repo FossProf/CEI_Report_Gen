@@ -249,6 +249,29 @@ try
     var unresolvedOutcome = await locationWorkflow.ResolveAsync(temperatureProject, "Unknown Place", CancellationToken.None);
     Assert(!unresolvedOutcome.IsResolved, "unresolved project location remains gracefully unavailable");
 
+    var geocodingHandler = new QueueHttpMessageHandler(
+    [
+        TestHttpResponses.Json("""
+        {
+          "results": [
+            {
+              "id": 4299276,
+              "name": "Louisville",
+              "latitude": 38.25424,
+              "longitude": -85.75941,
+              "timezone": "America/Kentucky/Louisville"
+            }
+          ]
+        }
+        """)
+    ]);
+    var geocodingResolver = new OpenMeteoProjectLocationResolver(new HttpClient(geocodingHandler));
+    var geocodedCoordinates = await geocodingResolver.ResolveAsync("Louisville, KY 40208", CancellationToken.None);
+    Assert(geocodedCoordinates is not null, "open-meteo geocoding payload resolves coordinates");
+    Assert(geocodedCoordinates?.Latitude == 38.25424, "open-meteo geocoding payload maps latitude");
+    Assert(geocodedCoordinates?.Longitude == -85.75941, "open-meteo geocoding payload maps longitude");
+    Assert(geocodedCoordinates?.TimeZoneId == "America/Kentucky/Louisville", "open-meteo geocoding payload maps timezone");
+
     var currentTemperatureService = new FakeProjectTemperatureService
     {
         CurrentResultFactory = _ => Task.FromResult(TemperatureLookupResult.Success(84.4))
@@ -354,6 +377,53 @@ try
     await manualInitializeTask;
     Assert(manualOverrideSession.TemperatureText == "86", "manual temperature override wins over a delayed lookup");
     Assert(!manualOverrideSession.AutoEnabled, "manual temperature override disables auto for the editor session");
+
+    var autoOffTaskSource = new TaskCompletionSource<TemperatureLookupResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var autoOffService = new FakeProjectTemperatureService
+    {
+        CurrentResultFactory = _ => autoOffTaskSource.Task
+    };
+    var autoOffSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        "84",
+        new DateTime(2026, 8, 10),
+        isNewReport: true,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        autoOffService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    var autoOffInitializeTask = autoOffSession.InitializeAsync();
+    await autoOffSession.SetAutoEnabledAsync(false, new DateTime(2026, 8, 10));
+    await autoOffSession.UpdateDateAsync(new DateTime(2026, 8, 9));
+    autoOffTaskSource.SetResult(TemperatureLookupResult.Success(77));
+    await autoOffInitializeTask;
+    Assert(!autoOffSession.AutoEnabled, "turning Auto off leaves auto disabled");
+    Assert(autoOffSession.TemperatureText == "84", "turning Auto off preserves the current temperature text");
+    Assert(!autoOffSession.HasStatusMessage, "turning Auto off clears temperature lookup status");
+    Assert(autoOffService.CurrentCallCount == 1, "changing the date while Auto is off does not start another lookup");
+
+    var reenableResults = new Queue<TemperatureLookupResult>(
+    [
+        TemperatureLookupResult.Success(84),
+        TemperatureLookupResult.Success(86)
+    ]);
+    var reenableService = new FakeProjectTemperatureService();
+    reenableService.CurrentResultFactory = _ => Task.FromResult(reenableResults.Dequeue());
+    var reenableSession = new TemperatureAssistanceSession(
+        temperatureProject,
+        string.Empty,
+        new DateTime(2026, 8, 10),
+        isNewReport: true,
+        isFinalReport: false,
+        ApplicationSettings.CreateDefaults().TemperatureAssistance,
+        reenableService,
+        () => new DateTimeOffset(2026, 8, 10, 16, 0, 0, TimeSpan.Zero));
+    await reenableSession.InitializeAsync();
+    await reenableSession.SetAutoEnabledAsync(false, new DateTime(2026, 8, 10));
+    await reenableSession.SetAutoEnabledAsync(true, new DateTime(2026, 8, 10));
+    Assert(reenableSession.AutoEnabled, "re-enabling Auto after turning it off leaves auto enabled");
+    Assert(reenableSession.TemperatureText == "86", "re-enabling Auto performs a fresh lookup");
+    Assert(reenableService.CurrentCallCount == 2, "re-enabling Auto triggers exactly one additional lookup");
 
     var raceDateA = new DateTime(2026, 8, 8);
     var raceDateB = new DateTime(2026, 8, 9);
