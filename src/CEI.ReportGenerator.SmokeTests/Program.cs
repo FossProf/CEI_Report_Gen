@@ -1,5 +1,7 @@
 using System.IO.Compression;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using CEI.ReportGenerator.App;
@@ -312,6 +314,89 @@ try
     raceTemperatureService.ResolveHistorical(raceDateA, TemperatureLookupResult.Success(77));
     await Task.WhenAll(dateATask, dateBTask);
     Assert(raceSession.TemperatureText == "83", "only the latest date-change lookup result is applied");
+
+    var cacheTimeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 8, 10, 12, 0, 0, TimeSpan.Zero));
+    var cacheCoordinatesA = new ProjectCoordinates(38.2115, -85.5565, "Eastern Standard Time");
+    var cacheCoordinatesB = new ProjectCoordinates(38.2500, -85.7500, "Eastern Standard Time");
+
+    var freshCurrentHandler = new QueueHttpMessageHandler(
+    [
+        TestHttpResponses.Json("""{"current":{"temperature_2m":72}}"""),
+        TestHttpResponses.Json("""{"current":{"temperature_2m":84}}""")
+    ]);
+    var freshCurrentService = new OpenMeteoProjectTemperatureService(new HttpClient(freshCurrentHandler), cacheTimeProvider);
+    var freshCurrentFirst = await freshCurrentService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    var freshCurrentSecond = await freshCurrentService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    Assert(freshCurrentFirst.RoundedTemperatureFahrenheit == 72, "fresh current lookup returns the provider value");
+    Assert(freshCurrentSecond.RoundedTemperatureFahrenheit == 72, "fresh current cache reuses the cached value before TTL expiry");
+    Assert(freshCurrentHandler.CallCount == 1, "fresh current cache avoids a second provider call before TTL expiry");
+
+    var expiredCurrentHandler = new QueueHttpMessageHandler(
+    [
+        TestHttpResponses.Json("""{"current":{"temperature_2m":72}}"""),
+        TestHttpResponses.Json("""{"current":{"temperature_2m":84}}""")
+    ]);
+    var expiredCurrentService = new OpenMeteoProjectTemperatureService(new HttpClient(expiredCurrentHandler), cacheTimeProvider);
+    var expiredCurrentFirst = await expiredCurrentService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    cacheTimeProvider.Advance(TimeSpan.FromMinutes(11));
+    var expiredCurrentSecond = await expiredCurrentService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    Assert(expiredCurrentFirst.RoundedTemperatureFahrenheit == 72, "expired-current test first lookup returns the initial value");
+    Assert(expiredCurrentSecond.RoundedTemperatureFahrenheit == 84, "expired current cache refreshes after TTL expiry");
+    Assert(expiredCurrentHandler.CallCount == 2, "expired current cache re-queries the provider after TTL expiry");
+
+    var boundaryCurrentHandler = new QueueHttpMessageHandler(
+    [
+        TestHttpResponses.Json("""{"current":{"temperature_2m":72}}"""),
+        TestHttpResponses.Json("""{"current":{"temperature_2m":80}}""")
+    ]);
+    var boundaryTimeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 8, 10, 12, 0, 0, TimeSpan.Zero));
+    var boundaryCurrentService = new OpenMeteoProjectTemperatureService(new HttpClient(boundaryCurrentHandler), boundaryTimeProvider);
+    await boundaryCurrentService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    boundaryTimeProvider.Advance(TimeSpan.FromMinutes(10));
+    var boundaryCurrentSecond = await boundaryCurrentService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    Assert(boundaryCurrentSecond.RoundedTemperatureFahrenheit == 80, "current cache treats age equal to TTL as stale");
+    Assert(boundaryCurrentHandler.CallCount == 2, "current cache TTL boundary performs a refresh");
+
+    var historicalCacheHandler = new QueueHttpMessageHandler(
+    [
+        TestHttpResponses.Json("""{"hourly":{"time":["2025-07-10T07:00","2025-07-10T08:00","2025-07-10T09:00"],"temperature_2m":[81,82,83]}}"""),
+        TestHttpResponses.Json("""{"hourly":{"time":["2025-07-10T07:00","2025-07-10T08:00","2025-07-10T09:00"],"temperature_2m":[90,91,92]}}""")
+    ]);
+    var historicalCacheTimeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 8, 10, 12, 0, 0, TimeSpan.Zero));
+    var historicalCacheService = new OpenMeteoProjectTemperatureService(new HttpClient(historicalCacheHandler), historicalCacheTimeProvider);
+    var historicalCacheFirst = await historicalCacheService.GetHistoricalDaytimeAverageAsync(cacheCoordinatesA, new DateTime(2025, 7, 10), 7, 17, CancellationToken.None);
+    historicalCacheTimeProvider.Advance(TimeSpan.FromDays(30));
+    var historicalCacheSecond = await historicalCacheService.GetHistoricalDaytimeAverageAsync(cacheCoordinatesA, new DateTime(2025, 7, 10), 7, 17, CancellationToken.None);
+    Assert(historicalCacheFirst.RoundedTemperatureFahrenheit == 82, "historical cache test first lookup returns the expected average");
+    Assert(historicalCacheSecond.RoundedTemperatureFahrenheit == 82, "historical cache remains available across large clock advances");
+    Assert(historicalCacheHandler.CallCount == 1, "historical cache is unaffected by current-temperature TTL");
+
+    var currentFailureHandler = new QueueHttpMessageHandler(
+    [
+        new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+        {
+            Content = new StringContent("""{"error":"unavailable"}""")
+        },
+        TestHttpResponses.Json("""{"current":{"temperature_2m":81}}""")
+    ]);
+    var currentFailureService = new OpenMeteoProjectTemperatureService(new HttpClient(currentFailureHandler), cacheTimeProvider);
+    var currentFailureFirst = await currentFailureService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    var currentFailureSecond = await currentFailureService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    Assert(!currentFailureFirst.IsSuccess, "failed current lookup surfaces a failure result");
+    Assert(currentFailureSecond.RoundedTemperatureFahrenheit == 81, "failed current lookup is not cached and retries can succeed immediately");
+    Assert(currentFailureHandler.CallCount == 2, "failed current lookup does not poison the cache");
+
+    var isolatedLocationHandler = new QueueHttpMessageHandler(
+    [
+        TestHttpResponses.Json("""{"current":{"temperature_2m":72}}"""),
+        TestHttpResponses.Json("""{"current":{"temperature_2m":85}}""")
+    ]);
+    var isolatedLocationService = new OpenMeteoProjectTemperatureService(new HttpClient(isolatedLocationHandler), cacheTimeProvider);
+    var locationAResult = await isolatedLocationService.GetCurrentTemperatureAsync(cacheCoordinatesA, CancellationToken.None);
+    var locationBResult = await isolatedLocationService.GetCurrentTemperatureAsync(cacheCoordinatesB, CancellationToken.None);
+    Assert(locationAResult.RoundedTemperatureFahrenheit == 72, "current cache remains correct for location A");
+    Assert(locationBResult.RoundedTemperatureFahrenheit == 85, "current cache remains isolated for location B");
+    Assert(isolatedLocationHandler.CallCount == 2, "different project locations do not reuse one another's current cache entries");
 
     Console.WriteLine("\n== Project readiness and dashboard ==");
     var readinessTemplatePath = Path.Combine(root, "templates", "CEI_Base_Template_Refined.docx");
@@ -2589,6 +2674,43 @@ file sealed class FakeProjectTemperatureService : IProjectTemperatureService
             pending.TrySetResult(result);
         }
     }
+}
+
+file sealed class FakeTimeProvider(DateTimeOffset initialUtcNow) : TimeProvider
+{
+    private DateTimeOffset _utcNow = initialUtcNow;
+
+    public override DateTimeOffset GetUtcNow() => _utcNow;
+
+    public void Advance(TimeSpan amount)
+        => _utcNow = _utcNow.Add(amount);
+}
+
+file sealed class QueueHttpMessageHandler(IEnumerable<HttpResponseMessage> responses) : HttpMessageHandler
+{
+    private readonly Queue<HttpResponseMessage> _responses = new(responses);
+
+    public int CallCount { get; private set; }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        CallCount++;
+        if (_responses.Count == 0)
+        {
+            throw new InvalidOperationException("No queued HTTP response was available for the test request.");
+        }
+
+        return Task.FromResult(_responses.Dequeue());
+    }
+}
+
+file static class TestHttpResponses
+{
+    public static HttpResponseMessage Json(string json)
+        => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json)
+        };
 }
 
 file sealed class TestHistoricalParser : IHistoricalReportParser

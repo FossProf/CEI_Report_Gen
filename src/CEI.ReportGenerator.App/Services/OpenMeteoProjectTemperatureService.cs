@@ -8,19 +8,29 @@ using CEI.ReportGenerator.Core.Services;
 
 namespace CEI.ReportGenerator.App.Services;
 
-public sealed class OpenMeteoProjectTemperatureService(HttpClient httpClient) : IProjectTemperatureService
+public sealed class OpenMeteoProjectTemperatureService(
+    HttpClient httpClient,
+    TimeProvider? timeProvider = null) : IProjectTemperatureService
 {
-    private readonly ConcurrentDictionary<string, TemperatureLookupResult> _cache = new(StringComparer.Ordinal);
+    // Current-temperature results expire after 10 minutes so "current" remains meaningfully current.
+    private static readonly TimeSpan CurrentTemperatureCacheTtl = TimeSpan.FromMinutes(10);
+
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly ConcurrentDictionary<string, CachedCurrentTemperatureResult> _currentCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, TemperatureLookupResult> _historicalCache = new(StringComparer.Ordinal);
 
     public async Task<TemperatureLookupResult> GetCurrentTemperatureAsync(
         ProjectCoordinates coordinates,
         CancellationToken cancellationToken)
     {
         var cacheKey = $"current|{coordinates.Latitude:F4}|{coordinates.Longitude:F4}|{coordinates.TimeZoneId}";
-        if (_cache.TryGetValue(cacheKey, out var cached))
+        if (_currentCache.TryGetValue(cacheKey, out var cached)
+            && _timeProvider.GetUtcNow() - cached.CachedUtc < CurrentTemperatureCacheTtl)
         {
-            return cached;
+            return cached.Result;
         }
+
+        _currentCache.TryRemove(cacheKey, out _);
 
         try
         {
@@ -40,7 +50,7 @@ public sealed class OpenMeteoProjectTemperatureService(HttpClient httpClient) : 
             }
 
             var result = TemperatureLookupResult.Success(value);
-            _cache[cacheKey] = result;
+            _currentCache[cacheKey] = new CachedCurrentTemperatureResult(result, _timeProvider.GetUtcNow());
             return result;
         }
         catch (OperationCanceledException)
@@ -63,7 +73,7 @@ public sealed class OpenMeteoProjectTemperatureService(HttpClient httpClient) : 
     {
         var cacheKey =
             $"historical|{coordinates.Latitude:F4}|{coordinates.Longitude:F4}|{coordinates.TimeZoneId}|{date:yyyy-MM-dd}|{startHour}|{endHour}";
-        if (_cache.TryGetValue(cacheKey, out var cached))
+        if (_historicalCache.TryGetValue(cacheKey, out var cached))
         {
             return cached;
         }
@@ -100,7 +110,7 @@ public sealed class OpenMeteoProjectTemperatureService(HttpClient httpClient) : 
             }
 
             var result = HistoricalTemperatureAverager.AverageFahrenheit(values);
-            _cache[cacheKey] = result;
+            _historicalCache[cacheKey] = result;
             return result;
         }
         catch (OperationCanceledException)
@@ -116,6 +126,7 @@ public sealed class OpenMeteoProjectTemperatureService(HttpClient httpClient) : 
 
     private sealed class ForecastResponse
     {
+        [JsonPropertyName("current")]
         public CurrentWeatherPayload? Current { get; set; }
     }
 
@@ -127,14 +138,20 @@ public sealed class OpenMeteoProjectTemperatureService(HttpClient httpClient) : 
 
     private sealed class HistoricalResponse
     {
+        [JsonPropertyName("hourly")]
         public HistoricalHourlyPayload? Hourly { get; set; }
     }
 
     private sealed class HistoricalHourlyPayload
     {
+        [JsonPropertyName("time")]
         public List<string>? Time { get; set; }
 
         [JsonPropertyName("temperature_2m")]
         public List<double>? Temperature2m { get; set; }
     }
+
+    private sealed record CachedCurrentTemperatureResult(
+        TemperatureLookupResult Result,
+        DateTimeOffset CachedUtc);
 }
